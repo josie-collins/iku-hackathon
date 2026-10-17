@@ -20,22 +20,11 @@ const RECEIPT_PROMPT =
   'as an ISO 4217 code (infer it from symbols or the country if needed), the best ' +
   'category, the merchant name and the date.';
 
-// With GOOGLE_CLOUD_PROJECT set, we use Application Default Credentials (run
-// `gcloud auth application-default login` once on the machine). Otherwise an API key.
-const useAdc = () => Boolean(process.env.GOOGLE_CLOUD_PROJECT);
-const isConfigured = () => useAdc() || Boolean(process.env.GEMINI_API_KEY);
-
 let client;
 async function getClient() {
   if (!client) {
     const { GoogleGenAI } = await import('@google/genai'); // the SDK is an ES module
-    client = useAdc()
-      ? new GoogleGenAI({
-          enterprise: true,
-          project: process.env.GOOGLE_CLOUD_PROJECT,
-          location: process.env.GOOGLE_CLOUD_LOCATION || 'us-central1',
-        })
-      : new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   }
   return client;
 }
@@ -50,7 +39,7 @@ function toMinor(amount, currency) {
 // Returns a draft expense, or null if Gemini fails or the result doesn't look valid,
 // so the caller can fall back to manual entry.
 async function parseReceipt(imageBase64, mimeType) {
-  if (!isConfigured()) return null;
+  if (!process.env.GEMINI_API_KEY) return null;
   try {
     const ai = await getClient();
     const response = await ai.models.generateContent({
