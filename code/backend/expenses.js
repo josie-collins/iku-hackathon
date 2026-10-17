@@ -8,8 +8,13 @@ const express = require('express');
 const db = require('./db');
 const { getRates } = require('./integrations/wise');
 const { convertMinor, rateBetween } = require('./logic/fx');
-const { splitEvenly, computeBalances, settleUp, countsTowardsPace, pace } = require('./logic/expenses');
+const {
+  splitEvenly, splitByWeights, weightsFromItems, computeBalances, settleUp, countsTowardsPace, pace,
+} = require('./logic/expenses');
+const gemini = require('./gemini');
 const router = express.Router({ mergeParams: true });
+
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
 
 const TYPES = ['shared', 'extra', 'personal'];
 const CATEGORIES = ['food', 'extras', 'accommodation', 'transport', 'other'];
@@ -168,6 +173,20 @@ router.get('/', async (req, res) => {
   });
 });
 
+// Photo -> draft expense. Saves nothing: the user confirms the draft, then it goes to POST /expenses.
+router.post('/parse-receipt', async (req, res) => {
+  const trip = await loadTrip(req, res);
+  if (!trip) return;
+  const { image_base64, mime_type } = req.body || {};
+  if (!image_base64 || !IMAGE_TYPES.includes(mime_type)) {
+    return res.status(400).json({
+      error: { code: 'bad_image', message: 'Send image_base64 and a mime_type of jpeg, png, webp or heic.' },
+    });
+  }
+  const draft = await gemini.parseReceipt(image_base64, mime_type);
+  res.json(draft ? { draft, source: 'gemini' } : { draft: null, source: 'manual' });
+});
+
 // Log something you paid for
 router.post('/expenses', async (req, res) => {
   const trip = await loadTrip(req, res);
@@ -191,7 +210,24 @@ router.post('/expenses', async (req, res) => {
 
   const members = await loadMembers(trip.id);
   const memberIds = new Set(members.map((m) => m.user_id));
-  let participantIds = type === 'personal' ? [me] : [...new Set(req.body.participant_ids || [])];
+
+  // Optional receipt items, each with the people it was for. The total is then
+  // split in proportion to what each person had (so tax and tip are shared the same way).
+  const items = type === 'personal' || !Array.isArray(req.body.items) || !req.body.items.length ? null
+    : req.body.items.map((item) => ({
+      amountMinor: item.amount_minor,
+      userIds: [...new Set(Array.isArray(item.participant_ids) ? item.participant_ids : [])],
+    }));
+  if (items) {
+    if (!items.every((i) => Number.isSafeInteger(i.amountMinor) && i.amountMinor >= 0)) {
+      return res.status(400).json({ error: 'Every item needs a price of 0 or more.' });
+    }
+    if (!items.every((i) => i.userIds.length)) return res.status(400).json({ error: 'Pick who each item was for.' });
+    if (!items.some((i) => i.amountMinor > 0)) return res.status(400).json({ error: 'The items add up to nothing.' });
+  }
+
+  let participantIds = type === 'personal' ? [me]
+    : [...new Set(items ? items.flatMap((i) => i.userIds) : req.body.participant_ids || [])];
   if (!participantIds.length) return res.status(400).json({ error: 'Pick who this was for.' });
   if (!participantIds.every((id) => memberIds.has(id))) {
     return res.status(400).json({ error: 'Everyone in the split has to be on the trip.' });
@@ -207,7 +243,9 @@ router.post('/expenses', async (req, res) => {
   }
   const amountBaseMinor = convertMinor(amountMinor, currency, trip.base_currency, fx.rates);
   if (amountBaseMinor <= 0) return res.status(400).json({ error: 'That amount is too small to record.' });
-  const shares = splitEvenly(amountBaseMinor, participantIds);
+  const shares = items
+    ? splitByWeights(amountBaseMinor, weightsFromItems(items, participantIds))
+    : splitEvenly(amountBaseMinor, participantIds);
 
   const client = await db.pool.connect();
   try {
