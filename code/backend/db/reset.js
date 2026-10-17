@@ -32,9 +32,25 @@ async function main() {
     } catch (err) {
       console.log(`! timescale.sql skipped (${err.message}). Fine on plain Postgres.`);
     }
-    console.log('▸ database reset. Demo invite code: DEMO42');
+    // Work out the shortlist for trips still being planned, as a budget save would.
+    const { recomputeGroup, OPEN_STATUSES } = require('../shortlist');
+    const { rows: open } = await client.query('SELECT id, name FROM groups WHERE status = ANY($1)', [OPEN_STATUSES]);
+    for (const g of open) {
+      const result = await recomputeGroup(g.id);
+      console.log(`▸ ${g.name}: ${result.status}, ${result.optionCount} option(s)`);
+    }
+    // Settled trips get their settle-up payments, already marked as paid.
+    const { createSettlements } = require('../expenses');
+    const { rows: settled } = await client.query(`SELECT id, name FROM groups WHERE status = 'settled'`);
+    for (const g of settled) {
+      const count = await createSettlements(client, g.id);
+      await client.query('UPDATE settlements SET settled_at = now() WHERE group_id = $1', [g.id]);
+      console.log(`▸ ${g.name}: ${count} settle-up payment(s)`);
+    }
+    console.log('▸ database reset. Demo logins: tom, amara, lucia, priya, mateo, kemi, jonas, aisha (password demo1234)');
   } finally {
     await client.end();
+    await require('../db').pool.end();
   }
 }
 

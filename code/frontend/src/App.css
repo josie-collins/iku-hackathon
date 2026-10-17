@@ -175,3 +175,379 @@ h2 {
 .budget-form .row button {
   margin-top: 0;
 }
+
+/* Login */
+.card-title {
+  margin-top: 0;
+}
+
+.stack {
+  display: grid;
+  gap: 14px;
+}
+
+.stack label,
+.row label {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+}
+
+.switch {
+  margin-bottom: 0;
+}
+
+button.link {
+  padding: 0;
+  background: none;
+  color: #2f6f4e;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.success {
+  color: #1e5a3b;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 24px;
+  border-bottom: 1px solid #ddd;
+}
+
+.tabs button {
+  border-radius: 8px 8px 0 0;
+  background: none;
+  color: #666;
+  border-bottom: 2px solid transparent;
+}
+
+.tabs button.active {
+  color: #222;
+  font-weight: 600;
+  border-bottom-color: #2f6f4e;
+}
+
+/* Friends */
+.people {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.person {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+}
+
+.person .actions {
+  display: flex;
+  gap: 8px;
+}
+
+.person button.secondary {
+  margin-top: 0;
+}
+
+/* Trips */
+button.new-trip {
+  width: 100%;
+  margin-top: 20px;
+}
+
+.trip .row {
+  margin-top: 16px;
+}
+
+.trip .row button.secondary {
+  margin-top: 0;
+}
+
+button.danger {
+  color: #b00020;
+}
+
+.group-box {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: #f6f8f7;
+}
+
+.group-box p {
+  margin: 0 0 8px;
+}
+
+.group-box p:last-child {
+  margin-bottom: 0;
+}
+
+.options {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.options li {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: white;
+  border: 1px solid #e3e3e3;
+}
+
+.options .price {
+  text-align: right;
+  font-weight: 600;
+}
+
+.warning {
+  color: #8a5a00;
+}
+
+.status-voting {
+  background: #e3ecfb;
+  color: #234a8a;
+}
+
+.status-resolving {
+  background: #fdf0d9;
+  color: #8a5a00;
+}
+
+/* New trip */
+.friend-picker {
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.friend-picker legend {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+label.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: normal;
+}
+
+label.check input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+/* Trip page */
+button.back {
+  margin-top: 8px;
+}
+
+.trip-header header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.trip-header h2 {
+  margin: 0;
+}
+
+button.open-trip {
+  margin-top: 16px;
+  width: 100%;
+  background: #eef5f1;
+  color: #1e5a3b;
+  font-weight: 600;
+}
+
+.pace {
+  margin-top: 16px;
+}
+
+.pace p {
+  margin: 0 0 4px;
+}
+
+.pace-line {
+  font-size: 1.1rem;
+}
+
+.pace-under {
+  border-color: #b9dfc9;
+  background: #f3faf6;
+}
+
+.pace-over {
+  border-color: #f0d29b;
+  background: #fffaf0;
+}
+
+select {
+  padding: 8px 10px;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  background: white;
+}
+
+.row label.narrow {
+  flex: 0 0 90px;
+}
+
+.type-picker {
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.type-picker legend {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.segmented {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 10px;
+  background: #eee;
+}
+
+.segmented button {
+  flex: 1;
+  padding: 6px 8px;
+  background: none;
+  color: #444;
+}
+
+.segmented button.active {
+  background: white;
+  color: #222;
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.ledger,
+.balances,
+.payments {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.ledger li {
+  padding: 12px 14px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+}
+
+.ledger-main {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ledger-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-top: 6px;
+}
+
+.ledger-foot button.link {
+  margin-left: auto;
+  font-size: 0.875rem;
+}
+
+button.link.danger {
+  color: #b00020;
+}
+
+.tag {
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: #eee;
+  color: #444;
+}
+
+.tag-extra {
+  background: #e3ecfb;
+  color: #234a8a;
+}
+
+.tag-personal {
+  background: #f1e6fa;
+  color: #5b2a86;
+}
+
+.balances li,
+.payments li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.payments li {
+  padding: 10px 0;
+  border-top: 1px solid #eee;
+}
+
+.owed {
+  color: #1e5a3b;
+  font-weight: 600;
+}
+
+.owes {
+  color: #8a5a00;
+  font-weight: 600;
+}
+
+a.button {
+  display: inline-block;
+  padding: 8px 14px;
+  border-radius: 8px;
+  background: #2f6f4e;
+  color: white;
+  text-decoration: none;
+}
+
+.payments .actions {
+  display: flex;
+  gap: 8px;
+}
+
+.payments .actions button.secondary {
+  margin-top: 0;
+}

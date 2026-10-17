@@ -39,15 +39,19 @@ DROP TABLE IF EXISTS budgets                CASCADE;
 DROP TABLE IF EXISTS group_members          CASCADE;
 DROP TABLE IF EXISTS groups                 CASCADE;
 DROP TABLE IF EXISTS destinations           CASCADE;
+DROP TABLE IF EXISTS friendships            CASCADE;
 DROP TABLE IF EXISTS users                  CASCADE;
 DROP FUNCTION IF EXISTS check_expense_shares() CASCADE;
 
 -- ----------------------------------------------------------------------------
 -- Users
--- Auth is an invite code + name, then the server issues a signed session token.
+-- Auth is username + password (scrypt hash, see passwords.js), then the server
+-- issues a signed session token. Usernames are stored lowercase.
 -- ----------------------------------------------------------------------------
 CREATE TABLE users (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  username         text        NOT NULL UNIQUE CHECK (username ~ '^[a-z0-9_]{3,20}$'),
+  password_hash    text        NOT NULL,
   name             text        NOT NULL,
   home_currency    char(3)     NOT NULL,           -- e.g. GBP, NGN, EUR
   nationality      char(2),                        -- ISO 3166-1 alpha-2, for entry-requirement links
@@ -55,6 +59,24 @@ CREATE TABLE users (
   dietary_needs    text[]      NOT NULL DEFAULT '{}',
   created_at       timestamptz NOT NULL DEFAULT now()
 );
+
+-- ----------------------------------------------------------------------------
+-- Friendships: one row per pair, whoever asked first is the requester.
+-- status 'pending' until the addressee accepts. Declining deletes the row.
+-- ----------------------------------------------------------------------------
+CREATE TABLE friendships (
+  requester_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  addressee_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status       text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted')),
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  accepted_at  timestamptz,
+  PRIMARY KEY (requester_id, addressee_id),
+  CHECK (requester_id <> addressee_id)
+);
+-- Only one row per pair, whichever direction it was sent in.
+CREATE UNIQUE INDEX idx_friendships_pair
+  ON friendships (LEAST(requester_id, addressee_id), GREATEST(requester_id, addressee_id));
+CREATE INDEX idx_friendships_addressee ON friendships (addressee_id);
 
 -- ----------------------------------------------------------------------------
 -- Destinations: SAMPLE cost data. Label it "sample data" in the UI and demo.
