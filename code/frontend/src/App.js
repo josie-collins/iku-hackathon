@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { api } from './api';
 import Account from './Account';
+import { AVATAR_CREDIT } from './Avatar';
 import './App.css';
 
 function App() {
@@ -20,6 +21,9 @@ function App() {
       <h1>Group Trip Planner</h1>
       <p className="tagline">Transparent costs, private budgets.</p>
       {token ? <Account onLogOut={logOut} /> : <Login onLogIn={logIn} />}
+      <footer className="credits muted small">
+        <a href={AVATAR_CREDIT.url} target="_blank" rel="noopener noreferrer">{AVATAR_CREDIT.text}</a>
+      </footer>
     </main>
   );
 }

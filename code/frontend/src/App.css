@@ -647,3 +647,180 @@ button.notification {
 .activity li.deleted span:first-child {
   color: #8a5a00;
 }
+
+/* Voting */
+.options li.option-card {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+
+.option-card figure,
+.trip-hero {
+  position: relative;
+  margin: 0;
+}
+
+.option-card img,
+.trip-hero img,
+img.trip-photo {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  background: #eee;
+}
+
+.option-card figcaption,
+.trip-hero figcaption {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  font-size: 0.7rem;
+}
+
+.option-card figcaption a,
+.trip-hero figcaption a {
+  color: white;
+}
+
+.option-body {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.option-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chips .tag {
+  margin-left: 0;
+}
+
+.vote-row,
+.book-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.vote-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+button.vote {
+  padding: 6px 12px;
+  background: #f1f1f1;
+  color: #333;
+  border: 1px solid #ddd;
+}
+
+button.vote.yes.chosen {
+  background: #dcf1e5;
+  border-color: #2f6f4e;
+  color: #1e5a3b;
+  font-weight: 600;
+}
+
+button.vote.no.chosen {
+  background: #fdecec;
+  border-color: #b00020;
+  color: #8a0019;
+  font-weight: 600;
+}
+
+/* Booked trip photos */
+img.trip-photo {
+  margin: -20px -20px 16px;
+  width: calc(100% + 40px);
+  border-radius: 12px 12px 0 0;
+}
+
+.trip-hero {
+  margin: -20px -20px 16px;
+}
+
+.trip-hero img {
+  border-radius: 12px 12px 0 0;
+}
+
+/* Avatars */
+img.avatar {
+  flex: none;
+  border-radius: 50%;
+  background: #eee;
+  vertical-align: middle;
+}
+
+.avatar-stack {
+  display: inline-flex;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.avatar-stack > span + span {
+  margin-left: -8px;
+}
+
+.avatar-stack img.avatar {
+  box-shadow: 0 0 0 2px white;
+}
+
+.with-people {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.profile-who,
+.person-who,
+.ledger-who {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ledger-who {
+  align-items: flex-start;
+}
+
+.balances .person-who,
+.activity .person-who {
+  gap: 8px;
+}
+
+button.notification {
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  align-items: start;
+}
+
+.notification-text {
+  display: grid;
+  gap: 2px;
+}
+
+.credits {
+  margin-top: 40px;
+  text-align: center;
+}
+
+.credits a {
+  color: inherit;
+}

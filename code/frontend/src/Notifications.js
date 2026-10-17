@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, formatMoney } from './api';
+import Avatar from './Avatar';
 
 const POLL_MS = 30000;
 
@@ -60,14 +61,17 @@ export default function NotificationBell({ onOpenTrip }) {
             {data.notifications.map((n) => (
               <li key={n.id} className={n.read_at ? '' : 'unread'}>
                 <button className="notification" onClick={() => onOpenTrip(n.group_id)}>
-                  <span>{describeActivity(n, n.actor_name)}</span>
-                  {n.share_base_minor != null && (
-                    <span className="muted small">
-                      {n.action === 'expense_deleted' ? 'Your share was' : 'Your share'}{' '}
-                      {formatMoney(n.share_base_minor, n.base_currency)}
-                    </span>
-                  )}
-                  <span className="muted small">{n.trip_name} · {timeAgo(n.created_at)}</span>
+                  <Avatar username={n.actor_username} name={n.actor_name} size={32} />
+                  <span className="notification-text">
+                    <span>{describeActivity(n, n.actor_name)}</span>
+                    {n.share_base_minor != null && (
+                      <span className="muted small">
+                        {n.action === 'expense_deleted' ? 'Your share was' : 'Your share'}{' '}
+                        {formatMoney(n.share_base_minor, n.base_currency)}
+                      </span>
+                    )}
+                    <span className="muted small">{n.trip_name} · {timeAgo(n.created_at)}</span>
+                  </span>
                 </button>
               </li>
             ))}

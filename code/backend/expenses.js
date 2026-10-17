@@ -21,7 +21,7 @@ async function loadTrip(req, res) {
     `SELECT g.id, g.name, g.status, g.base_currency, g.current_day, g.organiser_id,
             to_char(g.trip_start, 'YYYY-MM-DD') AS trip_start,
             to_char(g.trip_end, 'YYYY-MM-DD') AS trip_end,
-            d.city, gm.role
+            d.city, d.image_url, d.image_credit_url, gm.role
      FROM groups g
      JOIN group_members gm ON gm.group_id = g.id AND gm.user_id = $2
      LEFT JOIN destinations d ON d.id = g.destination_id

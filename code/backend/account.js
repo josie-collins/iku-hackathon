@@ -16,7 +16,7 @@ router.get('/', auth, async (req, res) => {
     `SELECT g.id AS group_id, g.name, g.status, g.invite_code, g.base_currency,
             to_char(g.trip_start, 'YYYY-MM-DD') AS trip_start, -- text, so timezones can't shift the day
             to_char(g.trip_end, 'YYYY-MM-DD') AS trip_end, gm.role,
-            d.city, d.country_code,
+            d.city, d.country_code, d.image_url, d.image_credit_url,
             b.flight_minor, b.group_minor, b.private_daily_minor, b.currency AS budget_currency,
             (SELECT to_char(min(a.start_date), 'YYYY-MM-DD') FROM availability a
              WHERE a.group_id = g.id AND a.user_id = $1) AS free_from,
@@ -41,14 +41,21 @@ router.get('/', auth, async (req, res) => {
      FROM v_member_public m JOIN users u ON u.id = m.user_id
      WHERE m.group_id = ANY($1::uuid[])
      ORDER BY m.name`, [groupIds]);
+  // Votes are anonymous: totals per option, plus only the caller's own vote.
   const { rows: options } = await db.query(
-    `SELECT o.id, o.group_id, d.city, d.country_code, d.tags,
+    `SELECT o.id, o.group_id, d.city, d.country_code, d.tags, d.image_url, d.image_credit_url,
             to_char(o.window_start, 'YYYY-MM-DD') AS window_start,
             to_char(o.window_end, 'YYYY-MM-DD') AS window_end,
-            o.est_cost_pp_minor, o.currency
-     FROM destination_options o JOIN destinations d ON d.id = o.destination_id
+            o.est_cost_pp_minor, o.currency,
+            count(v.option_id) FILTER (WHERE v.approve)::int     AS yes_votes,
+            count(v.option_id) FILTER (WHERE NOT v.approve)::int AS no_votes,
+            bool_or(v.approve) FILTER (WHERE v.user_id = $2)     AS my_vote
+     FROM destination_options o
+     JOIN destinations d ON d.id = o.destination_id
+     LEFT JOIN votes v ON v.option_id = o.id
      WHERE o.group_id = ANY($1::uuid[])
-     ORDER BY o.generated_at, o.id`, [groupIds]);
+     GROUP BY o.id, d.id
+     ORDER BY o.generated_at, o.id`, [groupIds, userId]);
 
   res.json({
     user: users[0],

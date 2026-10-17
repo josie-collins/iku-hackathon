@@ -94,6 +94,8 @@ CREATE TABLE destinations (
   food_pp_day_minor            bigint  NOT NULL CHECK (food_pp_day_minor >= 0),
   activities_pp_day_minor      bigint  NOT NULL CHECK (activities_pp_day_minor >= 0),
   source                       text    NOT NULL DEFAULT 'sample',
+  image_url                    text,            -- photo from Wikimedia Commons
+  image_credit_url             text,            -- its Commons file page (author and licence)
   updated_at                   timestamptz NOT NULL DEFAULT now(),
   UNIQUE (city, country_code)
 );

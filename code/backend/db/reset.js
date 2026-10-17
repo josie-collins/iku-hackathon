@@ -39,6 +39,25 @@ async function main() {
       const result = await recomputeGroup(g.id);
       console.log(`▸ ${g.name}: ${result.status}, ${result.optionCount} option(s)`);
     }
+    // A few sample votes, now that the shortlists exist. Summer Trip (the demo) stays unvoted.
+    const { rowCount: votes } = await client.query(
+      `INSERT INTO votes (option_id, user_id, approve)
+       SELECT o.id, u.id, v.approve
+       FROM (VALUES
+         ('February Weekend Away', 'Valencia', 'mateo', true),
+         ('February Weekend Away', 'Valencia', 'lucia', true),
+         ('February Weekend Away', 'Porto',    'priya', true),
+         ('February Weekend Away', 'Prague',   'lucia', false),
+         ('Spring Holiday 2027',   'Budapest', 'priya', true),
+         ('Spring Holiday 2027',   'Budapest', 'jonas', true),
+         ('Spring Holiday 2027',   'Prague',   'priya', true),
+         ('Spring Holiday 2027',   'Prague',   'aisha', false)
+       ) AS v(trip, city, username, approve)
+       JOIN groups g ON g.name = v.trip
+       JOIN destinations d ON d.city = v.city
+       JOIN destination_options o ON o.group_id = g.id AND o.destination_id = d.id
+       JOIN users u ON u.username = v.username`);
+    console.log(`▸ ${votes} sample vote(s)`);
     // Settled trips get their settle-up payments, already marked as paid.
     const { createSettlements } = require('../expenses');
     const { rows: settled } = await client.query(`SELECT id, name FROM groups WHERE status = 'settled'`);

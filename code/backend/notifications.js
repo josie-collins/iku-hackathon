@@ -11,7 +11,7 @@ router.get('/', async (req, res) => {
   const { rows } = await db.query(
     `SELECT n.id, n.share_base_minor, n.read_at, n.created_at,
             a.action, a.group_id, a.description, a.category, a.type, a.amount_minor, a.currency,
-            g.name AS trip_name, g.base_currency, u.name AS actor_name
+            g.name AS trip_name, g.base_currency, u.name AS actor_name, u.username AS actor_username
      FROM notifications n
      JOIN trip_activity a ON a.id = n.activity_id
      JOIN groups g ON g.id = a.group_id

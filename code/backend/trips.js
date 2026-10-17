@@ -102,6 +102,8 @@ router.delete('/:groupId/membership', async (req, res) => {
   res.status(204).end();
 });
 
+// Voting, booking and starting: /api/trips/:groupId/options/..., /start
+router.use('/:groupId', require('./booking'));
 // Expenses, balances and settle-up: /api/trips/:groupId/...
 router.use('/:groupId', require('./expenses'));
 

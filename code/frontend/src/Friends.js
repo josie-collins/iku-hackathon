@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from './api';
+import Avatar from './Avatar';
 
 export default function Friends({ onLogOut }) {
   const [data, setData] = useState(null);
@@ -126,8 +127,11 @@ export default function Friends({ onLogOut }) {
 function Person({ person, children }) {
   return (
     <li className="person">
-      <div>
-        <strong>{person.name}</strong> <span className="muted">@{person.username}</span>
+      <div className="person-who">
+        <Avatar username={person.username} name={person.name} size={36} />
+        <span>
+          <strong>{person.name}</strong> <span className="muted">@{person.username}</span>
+        </span>
       </div>
       <div className="actions">{children}</div>
     </li>

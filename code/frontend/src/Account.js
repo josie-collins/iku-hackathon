@@ -3,6 +3,7 @@ import { api, formatMoney } from './api';
 import Friends from './Friends';
 import Trip from './Trip';
 import NotificationBell from './Notifications';
+import Avatar, { AvatarStack } from './Avatar';
 
 const CURRENT = ['on_trip'];
 const PLANNED = ['planning', 'voting', 'resolving', 'booked'];
@@ -103,13 +104,16 @@ export default function Account({ onLogOut }) {
   return (
     <>
       <section className="card profile">
-        <div>
-          <h2>{user.name}</h2>
-          <p className="muted">
-            {[`@${user.username}`, user.home_currency, user.departure_airport && `flies from ${user.departure_airport}`]
-              .filter(Boolean)
-              .join(' · ')}
-          </p>
+        <div className="profile-who">
+          <Avatar username={user.username} name={user.name} size={56} />
+          <div>
+            <h2>{user.name}</h2>
+            <p className="muted">
+              {[`@${user.username}`, user.home_currency, user.departure_airport && `flies from ${user.departure_airport}`]
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+          </div>
         </div>
         <div className="profile-actions">
           <NotificationBell onOpenTrip={setOpenTrip} />
@@ -199,6 +203,7 @@ function NewTrip({ onCancel, onCreated, onFindFriends }) {
         {friends?.map((f) => (
           <label key={f.id} className="check">
             <input type="checkbox" checked={picked.has(f.id)} onChange={() => toggle(f.id)} />
+            <Avatar username={f.username} name={f.name} size={24} />
             <span>
               {f.name} <span className="muted">@{f.username}</span>
             </span>
@@ -241,6 +246,7 @@ function TripCard({ trip, user, onChanged, onOpen }) {
 
   return (
     <article className="card trip">
+      {!isOpen && trip.image_url && <img className="trip-photo" src={trip.image_url} alt={trip.city} loading="lazy" />}
       <header>
         <h3>{trip.name}</h3>
         <span className={`status status-${trip.status}`}>{STATUS_LABELS[trip.status] || trip.status}</span>
@@ -255,11 +261,12 @@ function TripCard({ trip, user, onChanged, onOpen }) {
           .filter(Boolean)
           .join(' · ')}
       </p>
-      <p className="muted small">
+      <p className="muted small with-people">
+        {others.length > 0 && <AvatarStack people={others} size={24} />}
         With {others.length ? others.map((m) => m.name).join(', ') : 'nobody else yet'}
       </p>
 
-      {isOpen && <GroupProgress trip={trip} />}
+      {isOpen && <GroupProgress trip={trip} onChanged={onChanged} />}
       {!isOpen && (
         <button className="open-trip" onClick={onOpen}>
           {trip.status === 'settled' ? 'Expenses and payments' : 'Expenses'} →
@@ -318,7 +325,7 @@ function TripCard({ trip, user, onChanged, onOpen }) {
 
 // What the whole group sees: progress, then the "fits everyone" shortlist.
 // Never shows a budget, the ceiling, or who is limiting.
-function GroupProgress({ trip }) {
+function GroupProgress({ trip, onChanged }) {
   const total = trip.members.length;
   return (
     <div className="group-box">
@@ -340,26 +347,108 @@ function GroupProgress({ trip }) {
       )}
       {trip.status === 'voting' && (
         <>
-          <p><strong>Fits everyone</strong> <span className="muted small">· prices are estimates from sample data</span></p>
+          <p>
+            <strong>Fits everyone</strong> <span className="muted small">· vote yes or no. Votes are anonymous; everyone sees totals only.</span>
+          </p>
           <ul className="options">
             {trip.options.map((o) => (
-              <li key={o.id}>
-                <div>
-                  <strong>{o.city}</strong>
-                  <div className="muted small">
-                    {formatDates(o.window_start, o.window_end)} · {nightsBetween(o.window_start, o.window_end)} nights
-                  </div>
-                </div>
-                <div className="price">
-                  ~{formatMoney(o.est_cost_pp_minor, o.currency)}
-                  <div className="muted small">per person, shared</div>
-                </div>
-              </li>
+              <OptionCard key={o.id} option={o} trip={trip} total={total} onChanged={onChanged} />
             ))}
           </ul>
+          <p className="muted small">Prices are estimates from sample data.</p>
         </>
       )}
     </div>
+  );
+}
+
+// One shortlisted place: photo, dates, price, your vote and the anonymous totals.
+function OptionCard({ option: o, trip, total, onChanged }) {
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const waiting = total - o.yes_votes - o.no_votes;
+  const majority = o.yes_votes * 2 > total;
+  const isOrganiser = trip.role === 'organiser';
+
+  const run = async (request) => {
+    setBusy(true);
+    setError('');
+    try {
+      await request();
+      onChanged();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // Clicking your current choice again takes the vote back.
+  const vote = (approve) =>
+    run(() =>
+      api(`/trips/${trip.group_id}/options/${o.id}/vote`, {
+        method: 'PUT',
+        body: { approve: o.my_vote === approve ? null : approve },
+      })
+    );
+
+  const book = () => {
+    if (!window.confirm(`Book ${o.city}, ${formatDates(o.window_start, o.window_end)}? Voting closes for everyone.`)) return;
+    run(() => api(`/trips/${trip.group_id}/options/${o.id}/book`, { method: 'POST' }));
+  };
+
+  return (
+    <li className="option-card">
+      {o.image_url && (
+        <figure>
+          <img src={o.image_url} alt={o.city} loading="lazy" />
+          {o.image_credit_url && (
+            <figcaption>
+              <a href={o.image_credit_url} target="_blank" rel="noopener noreferrer">Photo: Wikimedia Commons</a>
+            </figcaption>
+          )}
+        </figure>
+      )}
+      <div className="option-body">
+        <div className="option-head">
+          <div>
+            <strong>{o.city}</strong>
+            <div className="muted small">
+              {formatDates(o.window_start, o.window_end)} · {nightsBetween(o.window_start, o.window_end)} nights
+            </div>
+          </div>
+          <div className="price">
+            ~{formatMoney(o.est_cost_pp_minor, o.currency)}
+            <div className="muted small">per person, shared</div>
+          </div>
+        </div>
+        {o.tags?.length > 0 && (
+          <div className="chips">
+            {o.tags.map((t) => <span key={t} className="tag">{t}</span>)}
+          </div>
+        )}
+        <div className="vote-row">
+          <div className="vote-buttons" role="group" aria-label={`Your vote on ${o.city}`}>
+            <button className={`vote yes ${o.my_vote === true ? 'chosen' : ''}`} aria-pressed={o.my_vote === true} disabled={busy} onClick={() => vote(true)}>
+              👍 Yes
+            </button>
+            <button className={`vote no ${o.my_vote === false ? 'chosen' : ''}`} aria-pressed={o.my_vote === false} disabled={busy} onClick={() => vote(false)}>
+              👎 No
+            </button>
+          </div>
+          <span className="muted small">
+            {o.yes_votes} yes · {o.no_votes} no{waiting > 0 && ` · ${waiting} still to vote`}
+          </span>
+        </div>
+        {majority && (
+          <div className="book-row">
+            <span className="success small">Most of the group said yes</span>
+            {isOrganiser && <button disabled={busy} onClick={book}>Book {o.city}</button>}
+          </div>
+        )}
+        {error && <p className="error small">{error}</p>}
+      </div>
+    </li>
   );
 }
 

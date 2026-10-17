@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, formatMoney } from './api';
 import { currencyLabel, currencyOptions } from './currencies';
 import { describeActivity, timeAgo } from './Notifications';
+import Avatar, { AvatarStack } from './Avatar';
 
 const LOGGABLE = ['booked', 'on_trip'];
 
@@ -50,13 +51,17 @@ export default function Trip({ groupId, onBack, onLogOut }) {
 
   const { trip, me, members } = data;
   const nameOf = (id) => (id === me ? 'You' : members.find((m) => m.user_id === id)?.name || 'Someone');
+  const avatarOf = (id, size) => {
+    const m = members.find((x) => x.user_id === id);
+    return <Avatar username={m?.username} name={m?.name} size={size} />;
+  };
   const myCurrency = members.find((m) => m.user_id === me)?.home_currency || trip.base_currency;
   const canLog = LOGGABLE.includes(trip.status);
   const isOrganiser = trip.role === 'organiser';
 
-  const nextDay = async () => {
+  const organiserAction = (path) => async () => {
     try {
-      await api(`/trips/${groupId}/next-day`, { method: 'POST' });
+      await api(`/trips/${groupId}/${path}`, { method: 'POST' });
       load();
     } catch (err) {
       setError(err.message);
@@ -68,17 +73,31 @@ export default function Trip({ groupId, onBack, onLogOut }) {
       <button className="link back" onClick={onBack}>← All trips</button>
 
       <section className="card trip-header">
+        {trip.image_url && (
+          <figure className="trip-hero">
+            <img src={trip.image_url} alt={trip.city} />
+            {trip.image_credit_url && (
+              <figcaption>
+                <a href={trip.image_credit_url} target="_blank" rel="noopener noreferrer">Photo: Wikimedia Commons</a>
+              </figcaption>
+            )}
+          </figure>
+        )}
         <header>
           <h2>{trip.name}</h2>
           {trip.status === 'on_trip' && <span className="status status-on_trip">Day {Math.max(trip.current_day, 1)}</span>}
           {trip.status === 'settled' && <span className="status">Settled</span>}
           {trip.status === 'booked' && <span className="status status-booked">Booked</span>}
         </header>
-        <p className="muted">
+        <p className="muted with-people">
+          <AvatarStack people={members} size={28} />
           {[trip.city, members.map((m) => (m.user_id === me ? 'you' : m.name)).join(', ')].filter(Boolean).join(' · ')}
         </p>
+        {isOrganiser && trip.status === 'booked' && (
+          <button onClick={organiserAction('start')}>Start the trip</button>
+        )}
         {isOrganiser && trip.status === 'on_trip' && (
-          <button className="secondary" onClick={nextDay}>Simulate next day</button>
+          <button className="secondary" onClick={organiserAction('next-day')}>Simulate next day</button>
         )}
       </section>
 
@@ -102,9 +121,9 @@ export default function Trip({ groupId, onBack, onLogOut }) {
           <button className="new-trip" onClick={() => setAdding(true)}>+ Add an expense</button>
         ))}
 
-      <Ledger data={data} nameOf={nameOf} canDelete={canLog} groupId={groupId} onChanged={load} />
-      <Activity activity={data.activity} nameOf={nameOf} />
-      <SettleUp data={data} nameOf={nameOf} isOrganiser={isOrganiser} canSettle={canLog} groupId={groupId} onChanged={load} />
+      <Ledger data={data} nameOf={nameOf} avatarOf={avatarOf} canDelete={canLog} groupId={groupId} onChanged={load} />
+      <Activity activity={data.activity} nameOf={nameOf} avatarOf={avatarOf} />
+      <SettleUp data={data} nameOf={nameOf} avatarOf={avatarOf} isOrganiser={isOrganiser} canSettle={canLog} groupId={groupId} onChanged={load} />
     </>
   );
 }
@@ -233,7 +252,7 @@ function ExpenseForm({ groupId, me, members, defaultCurrency, tripCurrencies, on
   );
 }
 
-function Ledger({ data, nameOf, canDelete, groupId, onChanged }) {
+function Ledger({ data, nameOf, avatarOf, canDelete, groupId, onChanged }) {
   const { trip, me, expenses } = data;
 
   const remove = async (e) => {
@@ -257,11 +276,14 @@ function Ledger({ data, nameOf, canDelete, groupId, onChanged }) {
           return (
             <li key={e.id}>
               <div className="ledger-main">
-                <div>
-                  <strong>{e.description || CATEGORY_LABELS[e.category]}</strong>
-                  <div className="muted small">
-                    {nameOf(e.payer_id)} paid · {formatDay(e.spent_on)} · {CATEGORY_LABELS[e.category]}
-                    {e.type !== 'shared' && <span className={`tag tag-${e.type}`}>{e.type}</span>}
+                <div className="ledger-who">
+                  {avatarOf(e.payer_id, 32)}
+                  <div>
+                    <strong>{e.description || CATEGORY_LABELS[e.category]}</strong>
+                    <div className="muted small">
+                      {nameOf(e.payer_id)} paid · {formatDay(e.spent_on)} · {CATEGORY_LABELS[e.category]}
+                      {e.type !== 'shared' && <span className={`tag tag-${e.type}`}>{e.type}</span>}
+                    </div>
                   </div>
                 </div>
                 <div className="price">
@@ -292,7 +314,7 @@ function Ledger({ data, nameOf, canDelete, groupId, onChanged }) {
 }
 
 // Who added or deleted what. Personal entries only appear for the person who paid.
-function Activity({ activity, nameOf }) {
+function Activity({ activity, nameOf, avatarOf }) {
   if (!activity.length) return null;
   return (
     <section>
@@ -300,7 +322,7 @@ function Activity({ activity, nameOf }) {
       <ul className="activity">
         {activity.map((a) => (
           <li key={a.id} className={a.action === 'expense_deleted' ? 'deleted' : ''}>
-            <span>{describeActivity(a, nameOf(a.actor_id))}</span>
+            <span className="person-who">{avatarOf(a.actor_id, 22)} {describeActivity(a, nameOf(a.actor_id))}</span>
             <span className="muted small">{timeAgo(a.created_at)}</span>
           </li>
         ))}
@@ -309,7 +331,7 @@ function Activity({ activity, nameOf }) {
   );
 }
 
-function SettleUp({ data, nameOf, isOrganiser, canSettle, groupId, onChanged }) {
+function SettleUp({ data, nameOf, avatarOf, isOrganiser, canSettle, groupId, onChanged }) {
   const { trip, me, balances, suggested, settlements, rates } = data;
   const [busy, setBusy] = useState(false);
 
@@ -344,7 +366,7 @@ function SettleUp({ data, nameOf, isOrganiser, canSettle, groupId, onChanged }) 
         <ul className="balances">
           {balances.map((b) => (
             <li key={b.user_id}>
-              <span>{nameOf(b.user_id)}</span>
+              <span className="person-who">{avatarOf(b.user_id, 24)} {nameOf(b.user_id)}</span>
               <span className={b.balance_base_minor > 0 ? 'owed' : b.balance_base_minor < 0 ? 'owes' : 'muted'}>
                 {b.balance_base_minor > 0 && `is owed ${formatMoney(b.balance_base_minor, trip.base_currency)}`}
                 {b.balance_base_minor < 0 && `owes ${formatMoney(-b.balance_base_minor, trip.base_currency)}`}
