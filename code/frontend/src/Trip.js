@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, formatMoney } from './api';
+import { currencyLabel, currencyOptions } from './currencies';
 
 const LOGGABLE = ['booked', 'on_trip'];
 
@@ -89,6 +90,7 @@ export default function Trip({ groupId, onBack, onLogOut }) {
             me={me}
             members={members}
             defaultCurrency={myCurrency}
+            tripCurrencies={[myCurrency, trip.base_currency, ...members.map((m) => m.home_currency)]}
             onCancel={() => setAdding(false)}
             onSaved={() => {
               setAdding(false);
@@ -122,7 +124,7 @@ function Pace({ pace }) {
   );
 }
 
-function ExpenseForm({ groupId, me, members, defaultCurrency, onCancel, onSaved }) {
+function ExpenseForm({ groupId, me, members, defaultCurrency, tripCurrencies, onCancel, onSaved }) {
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState(defaultCurrency);
   const [description, setDescription] = useState('');
@@ -179,9 +181,13 @@ function ExpenseForm({ groupId, me, members, defaultCurrency, onCancel, onSaved 
           <span>Amount</span>
           <input type="number" inputMode="decimal" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus />
         </label>
-        <label className="narrow">
+        <label>
           <span>Currency</span>
-          <input value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} maxLength={3} />
+          <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            {currencyOptions(tripCurrencies).map((code) => (
+              <option key={code} value={code}>{currencyLabel(code)}</option>
+            ))}
+          </select>
         </label>
       </div>
       <label>

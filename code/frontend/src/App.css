@@ -412,10 +412,6 @@ select {
   background: white;
 }
 
-.row label.narrow {
-  flex: 0 0 90px;
-}
-
 .type-picker {
   border: none;
   padding: 0;
