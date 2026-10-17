@@ -81,3 +81,29 @@ SELECT
 FROM destinations d
 CROSS JOIN generate_series(0, 29) AS g
 CROSS JOIN (VALUES ('food'), ('activities'), ('transport')) AS c(category);
+
+-- Extra groups so the account page has a current and a past trip to show.
+-- The demo group above stays the one used by the 3-minute demo and the tests.
+INSERT INTO groups (id, name, invite_code, organiser_id, status, base_currency, destination_id, trip_start, trip_end, current_day)
+SELECT v.id::uuid, v.name, v.code, v.organiser::uuid, v.status, 'EUR', d.id, v.trip_start::date, v.trip_end::date, v.current_day
+FROM (VALUES
+  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'Porto Weekend', 'PORTO1', '33333333-3333-3333-3333-333333333333', 'on_trip', 'Porto',  '2026-10-16', '2026-10-19', 2),
+  ('cccccccc-cccc-cccc-cccc-cccccccccccc', 'Spring Break',  'LISB26', '11111111-1111-1111-1111-111111111111', 'settled', 'Lisbon', '2026-04-03', '2026-04-08', 0)
+) AS v(id, name, code, organiser, status, city, trip_start, trip_end, current_day)
+JOIN destinations d ON d.city = v.city;
+
+INSERT INTO group_members (group_id, user_id, role, trip_styles) VALUES
+  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '33333333-3333-3333-3333-333333333333', 'organiser', '{food}'),
+  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '11111111-1111-1111-1111-111111111111', 'member',    '{culture}'),
+  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '22222222-2222-2222-2222-222222222222', 'member',    '{food}'),
+  ('cccccccc-cccc-cccc-cccc-cccccccccccc', '11111111-1111-1111-1111-111111111111', 'organiser', '{beach}'),
+  ('cccccccc-cccc-cccc-cccc-cccccccccccc', '22222222-2222-2222-2222-222222222222', 'member',    '{beach}'),
+  ('cccccccc-cccc-cccc-cccc-cccccccccccc', '33333333-3333-3333-3333-333333333333', 'member',    '{nightlife}');
+
+INSERT INTO budgets (group_id, user_id, flight_minor, group_minor, private_daily_minor, currency) VALUES
+  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '33333333-3333-3333-3333-333333333333',    10000,    25000,    4500, 'EUR'),
+  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '11111111-1111-1111-1111-111111111111',    12000,    30000,    5000, 'GBP'),
+  ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '22222222-2222-2222-2222-222222222222', 40000000, 50000000, 6000000, 'NGN'),
+  ('cccccccc-cccc-cccc-cccc-cccccccccccc', '11111111-1111-1111-1111-111111111111',    15000,    40000,    5000, 'GBP'),
+  ('cccccccc-cccc-cccc-cccc-cccccccccccc', '22222222-2222-2222-2222-222222222222', 38000000, 70000000, 6500000, 'NGN'),
+  ('cccccccc-cccc-cccc-cccc-cccccccccccc', '33333333-3333-3333-3333-333333333333',    15000,    35000,    5000, 'EUR');
