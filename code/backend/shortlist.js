@@ -134,7 +134,10 @@ async function recomputeGroup(groupId) {
 // For request handlers: a failed recompute shouldn't undo the user's save.
 async function recomputeQuietly(groupId) {
   try {
-    return await recomputeGroup(groupId);
+    const result = await recomputeGroup(groupId);
+    // New options get a "why this fits" reason from Cortex, in the background.
+    if (result && result.status === 'voting') require('./explanations').explainInBackground(groupId);
+    return result;
   } catch (err) {
     console.error(`recompute failed for group ${groupId}:`, err.message);
     return null;

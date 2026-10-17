@@ -422,10 +422,22 @@ function OptionCard({ option: o, trip, total, onChanged }) {
             <div className="muted small">per person, shared</div>
           </div>
         </div>
+        {o.reason && (
+          <p className="reason">
+            {o.reason.text}
+            {o.reason.source === 'cortex' && <span className="muted small ai-label"> · ✨ Written by Snowflake Cortex AI</span>}
+          </p>
+        )}
         {o.tags?.length > 0 && (
           <div className="chips">
             {o.tags.map((t) => <span key={t} className="tag">{t}</span>)}
           </div>
+        )}
+        {o.past_spend && (
+          <p className="muted small past-spend">
+            Past groups spent about <strong>{formatMoney(o.past_spend.per_person_day_minor, o.past_spend.currency)}</strong> per
+            person a day here{o.past_spend.sample_only && ' · sample data'}
+          </p>
         )}
         <div className="vote-row">
           <div className="vote-buttons" role="group" aria-label={`Your vote on ${o.city}`}>

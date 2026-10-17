@@ -1,6 +1,10 @@
 const express = require('express');
 const db = require('./db');
 const auth = require('./auth');
+const { destinationSpend } = require('./insights');
+const { getRates } = require('./integrations/wise');
+const { convertMinor } = require('./logic/fx');
+const { explanationInput, templateReason } = require('./logic/explain');
 const router = express.Router();
 
 // The logged-in user's profile and every group they're in, with their OWN budget
@@ -37,7 +41,7 @@ router.get('/', auth, async (req, res) => {
 
   const groupIds = trips.map((t) => t.group_id);
   const { rows: members } = await db.query(
-    `SELECT m.group_id, m.user_id, m.name, u.username, m.role
+    `SELECT m.group_id, m.user_id, m.name, u.username, m.role, m.trip_styles
      FROM v_member_public m JOIN users u ON u.id = m.user_id
      WHERE m.group_id = ANY($1::uuid[])
      ORDER BY m.name`, [groupIds]);
@@ -46,7 +50,7 @@ router.get('/', auth, async (req, res) => {
     `SELECT o.id, o.group_id, d.city, d.country_code, d.tags, d.image_url, d.image_credit_url,
             to_char(o.window_start, 'YYYY-MM-DD') AS window_start,
             to_char(o.window_end, 'YYYY-MM-DD') AS window_end,
-            o.est_cost_pp_minor, o.currency,
+            o.est_cost_pp_minor, o.currency, o.summary,
             count(v.option_id) FILTER (WHERE v.approve)::int     AS yes_votes,
             count(v.option_id) FILTER (WHERE NOT v.approve)::int AS no_votes,
             bool_or(v.approve) FILTER (WHERE v.user_id = $2)     AS my_vote
@@ -57,12 +61,47 @@ router.get('/', auth, async (req, res) => {
      GROUP BY o.id, d.id
      ORDER BY o.generated_at, o.id`, [groupIds, userId]);
 
+  // "Past groups spent about X per person per day here", in each option's currency.
+  // Nice to have: if it fails, the page still loads without it.
+  let pastSpend = () => null;
+  if (options.length) {
+    try {
+      const [{ byCity, source }, fx] = await Promise.all([
+        destinationSpend(),
+        getRates('EUR', options.map((o) => o.currency)),
+      ]);
+      pastSpend = (o) => {
+        const city = byCity[o.city];
+        if (!city) return null;
+        return {
+          per_person_day_minor: convertMinor(city.perPersonDayMinor, 'EUR', o.currency, fx.rates),
+          currency: o.currency,
+          days: city.days,
+          sample_only: city.sampleOnly,
+          source,
+        };
+      };
+    } catch (err) {
+      console.error('past spend unavailable:', err.message);
+    }
+  }
+
+  // Each trip's combined trip styles (for the reasons), without saying who likes what.
+  const groupStyles = (groupId) => [...new Set(members.filter((m) => m.group_id === groupId).flatMap((m) => m.trip_styles || []))];
+
   res.json({
     user: users[0],
     trips: trips.map(({ flight_minor, group_minor, private_daily_minor, budget_currency, ...trip }) => ({
       ...trip,
-      members: members.filter((m) => m.group_id === trip.group_id).map(({ group_id, ...m }) => m),
-      options: options.filter((o) => o.group_id === trip.group_id).map(({ group_id, ...o }) => o),
+      members: members.filter((m) => m.group_id === trip.group_id).map(({ group_id, trip_styles, ...m }) => m),
+      options: options.filter((o) => o.group_id === trip.group_id).map(({ group_id, summary, ...o }) => ({
+        ...o,
+        past_spend: pastSpend(o),
+        // Cortex's sentence if it wrote one, otherwise a plain template reason.
+        reason: summary
+          ? { text: summary, source: 'cortex' }
+          : { text: templateReason(explanationInput(o, groupStyles(trip.group_id))), source: 'template' },
+      })),
       budget: flight_minor == null ? null : { flight_minor, group_minor, private_daily_minor, currency: budget_currency },
     })),
   });

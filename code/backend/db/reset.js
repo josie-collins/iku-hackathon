@@ -39,6 +39,11 @@ async function main() {
       const result = await recomputeGroup(g.id);
       console.log(`▸ ${g.name}: ${result.status}, ${result.optionCount} option(s)`);
     }
+    // "Why this fits" reasons from Snowflake Cortex, if it's configured and available.
+    const { explainGroup } = require('../explanations');
+    let reasons = 0;
+    for (const g of open) reasons += (await explainGroup(g.id).catch(() => ({ written: 0 }))).written;
+    console.log(`▸ ${reasons} Cortex reason(s) written${reasons ? '' : ' (template reasons will show instead)'}`);
     // A few sample votes, now that the shortlists exist. Summer Trip (the demo) stays unvoted.
     const { rowCount: votes } = await client.query(
       `INSERT INTO votes (option_id, user_id, approve)

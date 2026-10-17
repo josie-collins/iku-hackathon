@@ -824,3 +824,15 @@ button.notification {
 .credits a {
   color: inherit;
 }
+
+.past-spend {
+  margin: 0;
+}
+
+.reason {
+  margin: 0;
+}
+
+.ai-label {
+  white-space: nowrap;
+}
