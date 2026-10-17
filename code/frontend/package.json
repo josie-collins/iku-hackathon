@@ -4,6 +4,8 @@
   "private": true,
   "proxy": "http://localhost:8080",
   "dependencies": {
+    "@dicebear/adventurer": "9.4.2",
+    "@dicebear/core": "9.4.2",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.3",
