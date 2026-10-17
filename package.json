@@ -1,0 +1,8 @@
+{
+  "name": "iku-hackathon",
+  "private": true,
+  "scripts": {
+    "dev": "node code/scripts/dev.js",
+    "setup": "node code/scripts/dev.js --setup-only"
+  }
+}
