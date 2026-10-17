@@ -1,0 +1,15 @@
+# dependencies
+node_modules/
+
+# environment files (real keys live here, never commit them)
+.env
+.env.local
+.env.*.local
+
+# build output
+build/
+dist/
+
+# OS / editor
+.DS_Store
+.vscode/
