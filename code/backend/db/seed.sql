@@ -375,3 +375,21 @@ SELECT e.id, u.id,
 FROM seed_expense_rows e
 CROSS JOIN LATERAL unnest(e.participants) WITH ORDINALITY AS p(username, n)
 JOIN users u ON u.username = p.username;
+
+-- Activity log for the sample expenses, as if each was added on the day it was
+-- spent. Everyone in a split is notified; only Porto Weekend and the Guadarrama
+-- hike (under way now) still have unread ones.
+INSERT INTO trip_activity (group_id, actor_id, action, expense_id, type, category, description,
+                           amount_minor, currency, amount_base_minor, created_at)
+SELECT group_id, payer_id, 'expense_added', id, type, category, description,
+       amount_minor, currency, amount_base_minor, spent_on + time '19:00'
+FROM expenses;
+
+INSERT INTO notifications (user_id, activity_id, share_base_minor, read_at, created_at)
+SELECT p.user_id, a.id, p.share_base_minor,
+       CASE WHEN g.status = 'on_trip' THEN NULL ELSE a.created_at + interval '1 hour' END,
+       a.created_at
+FROM trip_activity a
+JOIN groups g ON g.id = a.group_id
+JOIN expense_participants p ON p.expense_id = a.expense_id
+WHERE a.type <> 'personal' AND p.user_id <> a.actor_id;

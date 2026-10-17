@@ -68,6 +68,24 @@ const balancesFrom = (members, expenses) => computeBalances(
   })),
 );
 
+// Record an add/delete and notify the people in the split (never the actor).
+// Personal expenses are logged for the payer only and notify nobody.
+async function logActivity(client, { groupId, actorId, action, expense, shares }) {
+  const { rows: [activity] } = await client.query(
+    `INSERT INTO trip_activity (group_id, actor_id, action, expense_id, type, category, description,
+                                amount_minor, currency, amount_base_minor)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id`,
+    [groupId, actorId, action, expense.id, expense.type, expense.category, expense.description,
+      expense.amount_minor, expense.currency, expense.amount_base_minor]);
+  if (expense.type === 'personal') return;
+  for (const s of shares) {
+    if (s.userId === actorId) continue;
+    await client.query(
+      'INSERT INTO notifications (user_id, activity_id, share_base_minor) VALUES ($1, $2, $3)',
+      [s.userId, activity.id, s.shareMinor]);
+  }
+}
+
 // Days of the trip that count for pacing.
 function tripDays(trip) {
   if (trip.status === 'on_trip') return Math.max(trip.current_day, 1);
@@ -110,6 +128,18 @@ router.get('/', async (req, res) => {
   }
 
   const balances = balancesFrom(members, expenses);
+  // Latest activity; personal entries only for the person who paid.
+  const { rows: activity } = await db.query(
+    `SELECT id, actor_id, action, type, category, description, amount_minor, currency, created_at
+     FROM trip_activity
+     WHERE group_id = $1 AND (type <> 'personal' OR actor_id = $2)
+     ORDER BY created_at DESC LIMIT 30`, [trip.id, me]);
+  // Opening the trip counts as having seen its notifications.
+  await db.query(
+    `UPDATE notifications SET read_at = now()
+     WHERE user_id = $1 AND read_at IS NULL
+       AND activity_id IN (SELECT id FROM trip_activity WHERE group_id = $2)`, [me, trip.id]);
+
   const { rows: settlements } = await db.query(
     `SELECT id, from_user, to_user, amount_base_minor, amount_minor, currency, fx_source, wise_link, settled_at
      FROM settlements WHERE group_id = $1 ORDER BY created_at, id`, [trip.id]);
@@ -133,6 +163,7 @@ router.get('/', async (req, res) => {
     suggested,
     settlements,
     pace: myPace,
+    activity: activity.map((a) => ({ ...a, amount_minor: Number(a.amount_minor) })),
     rates: { source: fx.source, fetched_at: fx.fetchedAt },
   });
 });
@@ -195,6 +226,14 @@ router.post('/expenses', async (req, res) => {
         'INSERT INTO expense_participants (expense_id, user_id, share_base_minor) VALUES ($1, $2, $3)',
         [expense.id, s.userId, s.shareMinor]);
     }
+    await logActivity(client, {
+      groupId: trip.id,
+      actorId: me,
+      action: 'expense_added',
+      expense: { id: expense.id, type, category, description: String(description).trim() || null,
+        amount_minor: amountMinor, currency, amount_base_minor: amountBaseMinor },
+      shares,
+    });
     await client.query('COMMIT');
     res.status(201).json({ id: expense.id });
   } catch (err) {
@@ -210,11 +249,38 @@ router.delete('/expenses/:expenseId', async (req, res) => {
   const trip = await loadTrip(req, res);
   if (!trip) return;
   if (!LOGGABLE.includes(trip.status)) return res.status(409).json({ error: 'This trip is settled.' });
-  const { rowCount } = await db.query(
-    'DELETE FROM expenses WHERE id = $1 AND group_id = $2 AND payer_id = $3',
-    [req.params.expenseId, trip.id, req.user.userId]);
-  if (!rowCount) return res.status(404).json({ error: 'You can only delete expenses you paid for.' });
-  res.status(204).end();
+  const me = req.user.userId;
+
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Snapshot it first, so the log and notifications can say what was deleted.
+    const { rows: [expense] } = await client.query(
+      `SELECT id, type, category, description, amount_minor, currency, amount_base_minor
+       FROM expenses WHERE id = $1 AND group_id = $2 AND payer_id = $3 FOR UPDATE`,
+      [req.params.expenseId, trip.id, me]);
+    if (!expense) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'You can only delete expenses you paid for.' });
+    }
+    const { rows: participants } = await client.query(
+      'SELECT user_id, share_base_minor FROM expense_participants WHERE expense_id = $1', [expense.id]);
+    await client.query('DELETE FROM expenses WHERE id = $1', [expense.id]);
+    await logActivity(client, {
+      groupId: trip.id,
+      actorId: me,
+      action: 'expense_deleted',
+      expense,
+      shares: participants.map((p) => ({ userId: p.user_id, shareMinor: Number(p.share_base_minor) })),
+    });
+    await client.query('COMMIT');
+    res.status(204).end();
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
 });
 
 // Work out who pays whom and write it down. Used by the settle endpoint and db:reset.

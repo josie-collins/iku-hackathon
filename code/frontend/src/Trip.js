@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, formatMoney } from './api';
 import { currencyLabel, currencyOptions } from './currencies';
+import { describeActivity, timeAgo } from './Notifications';
 
 const LOGGABLE = ['booked', 'on_trip'];
 
@@ -102,6 +103,7 @@ export default function Trip({ groupId, onBack, onLogOut }) {
         ))}
 
       <Ledger data={data} nameOf={nameOf} canDelete={canLog} groupId={groupId} onChanged={load} />
+      <Activity activity={data.activity} nameOf={nameOf} />
       <SettleUp data={data} nameOf={nameOf} isOrganiser={isOrganiser} canSettle={canLog} groupId={groupId} onChanged={load} />
     </>
   );
@@ -284,6 +286,24 @@ function Ledger({ data, nameOf, canDelete, groupId, onChanged }) {
             </li>
           );
         })}
+      </ul>
+    </section>
+  );
+}
+
+// Who added or deleted what. Personal entries only appear for the person who paid.
+function Activity({ activity, nameOf }) {
+  if (!activity.length) return null;
+  return (
+    <section>
+      <h2>Activity</h2>
+      <ul className="activity">
+        {activity.map((a) => (
+          <li key={a.id} className={a.action === 'expense_deleted' ? 'deleted' : ''}>
+            <span>{describeActivity(a, nameOf(a.actor_id))}</span>
+            <span className="muted small">{timeAgo(a.created_at)}</span>
+          </li>
+        ))}
       </ul>
     </section>
   );

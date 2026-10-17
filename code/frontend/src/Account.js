@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, formatMoney } from './api';
 import Friends from './Friends';
 import Trip from './Trip';
+import NotificationBell from './Notifications';
 
 const CURRENT = ['on_trip'];
 const PLANNED = ['planning', 'voting', 'resolving', 'booked'];
@@ -110,7 +111,10 @@ export default function Account({ onLogOut }) {
               .join(' · ')}
           </p>
         </div>
-        <button className="secondary" onClick={onLogOut}>Log out</button>
+        <div className="profile-actions">
+          <NotificationBell onOpenTrip={setOpenTrip} />
+          <button className="secondary" onClick={onLogOut}>Log out</button>
+        </div>
       </section>
 
       <nav className="tabs" role="tablist">
