@@ -32,9 +32,49 @@ async function main() {
     } catch (err) {
       console.log(`! timescale.sql skipped (${err.message}). Fine on plain Postgres.`);
     }
-    console.log('▸ database reset. Demo invite code: DEMO42');
+    // Work out the shortlist for trips still being planned, as a budget save would.
+    const { recomputeGroup, OPEN_STATUSES } = require('../shortlist');
+    const { rows: open } = await client.query('SELECT id, name FROM groups WHERE status = ANY($1)', [OPEN_STATUSES]);
+    for (const g of open) {
+      const result = await recomputeGroup(g.id);
+      console.log(`▸ ${g.name}: ${result.status}, ${result.optionCount} option(s)`);
+    }
+    // "Why this fits" reasons from Snowflake Cortex, if it's configured and available.
+    const { explainGroup } = require('../explanations');
+    let reasons = 0;
+    for (const g of open) reasons += (await explainGroup(g.id).catch(() => ({ written: 0 }))).written;
+    console.log(`▸ ${reasons} Cortex reason(s) written${reasons ? '' : ' (template reasons will show instead)'}`);
+    // A few sample votes, now that the shortlists exist. Summer Trip (the demo) stays unvoted.
+    const { rowCount: votes } = await client.query(
+      `INSERT INTO votes (option_id, user_id, approve)
+       SELECT o.id, u.id, v.approve
+       FROM (VALUES
+         ('February Weekend Away', 'Valencia', 'mateo', true),
+         ('February Weekend Away', 'Valencia', 'lucia', true),
+         ('February Weekend Away', 'Porto',    'priya', true),
+         ('February Weekend Away', 'Prague',   'lucia', false),
+         ('Spring Holiday 2027',   'Budapest', 'priya', true),
+         ('Spring Holiday 2027',   'Budapest', 'jonas', true),
+         ('Spring Holiday 2027',   'Prague',   'priya', true),
+         ('Spring Holiday 2027',   'Prague',   'aisha', false)
+       ) AS v(trip, city, username, approve)
+       JOIN groups g ON g.name = v.trip
+       JOIN destinations d ON d.city = v.city
+       JOIN destination_options o ON o.group_id = g.id AND o.destination_id = d.id
+       JOIN users u ON u.username = v.username`);
+    console.log(`▸ ${votes} sample vote(s)`);
+    // Settled trips get their settle-up payments, already marked as paid.
+    const { createSettlements } = require('../expenses');
+    const { rows: settled } = await client.query(`SELECT id, name FROM groups WHERE status = 'settled'`);
+    for (const g of settled) {
+      const count = await createSettlements(client, g.id);
+      await client.query('UPDATE settlements SET settled_at = now() WHERE group_id = $1', [g.id]);
+      console.log(`▸ ${g.name}: ${count} settle-up payment(s)`);
+    }
+    console.log('▸ database reset. Demo logins: tom, amara, lucia, priya, mateo, kemi, jonas, aisha (password demo1234)');
   } finally {
     await client.end();
+    await require('../db').pool.end();
   }
 }
 

@@ -25,6 +25,8 @@
 
 DROP VIEW  IF EXISTS v_member_public CASCADE;
 DROP TABLE IF EXISTS sample_trip_spend      CASCADE;
+DROP TABLE IF EXISTS notifications          CASCADE;
+DROP TABLE IF EXISTS trip_activity          CASCADE;
 DROP TABLE IF EXISTS daily_checkins         CASCADE;
 DROP TABLE IF EXISTS settlements            CASCADE;
 DROP TABLE IF EXISTS expense_participants   CASCADE;
@@ -39,15 +41,19 @@ DROP TABLE IF EXISTS budgets                CASCADE;
 DROP TABLE IF EXISTS group_members          CASCADE;
 DROP TABLE IF EXISTS groups                 CASCADE;
 DROP TABLE IF EXISTS destinations           CASCADE;
+DROP TABLE IF EXISTS friendships            CASCADE;
 DROP TABLE IF EXISTS users                  CASCADE;
 DROP FUNCTION IF EXISTS check_expense_shares() CASCADE;
 
 -- ----------------------------------------------------------------------------
 -- Users
--- Auth is an invite code + name, then the server issues a signed session token.
+-- Auth is username + password (scrypt hash, see passwords.js), then the server
+-- issues a signed session token. Usernames are stored lowercase.
 -- ----------------------------------------------------------------------------
 CREATE TABLE users (
   id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  username         text        NOT NULL UNIQUE CHECK (username ~ '^[a-z0-9_]{3,20}$'),
+  password_hash    text        NOT NULL,
   name             text        NOT NULL,
   home_currency    char(3)     NOT NULL,           -- e.g. GBP, NGN, EUR
   nationality      char(2),                        -- ISO 3166-1 alpha-2, for entry-requirement links
@@ -55,6 +61,24 @@ CREATE TABLE users (
   dietary_needs    text[]      NOT NULL DEFAULT '{}',
   created_at       timestamptz NOT NULL DEFAULT now()
 );
+
+-- ----------------------------------------------------------------------------
+-- Friendships: one row per pair, whoever asked first is the requester.
+-- status 'pending' until the addressee accepts. Declining deletes the row.
+-- ----------------------------------------------------------------------------
+CREATE TABLE friendships (
+  requester_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  addressee_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status       text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','accepted')),
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  accepted_at  timestamptz,
+  PRIMARY KEY (requester_id, addressee_id),
+  CHECK (requester_id <> addressee_id)
+);
+-- Only one row per pair, whichever direction it was sent in.
+CREATE UNIQUE INDEX idx_friendships_pair
+  ON friendships (LEAST(requester_id, addressee_id), GREATEST(requester_id, addressee_id));
+CREATE INDEX idx_friendships_addressee ON friendships (addressee_id);
 
 -- ----------------------------------------------------------------------------
 -- Destinations: SAMPLE cost data. Label it "sample data" in the UI and demo.
@@ -70,6 +94,8 @@ CREATE TABLE destinations (
   food_pp_day_minor            bigint  NOT NULL CHECK (food_pp_day_minor >= 0),
   activities_pp_day_minor      bigint  NOT NULL CHECK (activities_pp_day_minor >= 0),
   source                       text    NOT NULL DEFAULT 'sample',
+  image_url                    text,            -- photo from Wikimedia Commons
+  image_credit_url             text,            -- its Commons file page (author and licence)
   updated_at                   timestamptz NOT NULL DEFAULT now(),
   UNIQUE (city, country_code)
 );
@@ -306,6 +332,41 @@ CREATE CONSTRAINT TRIGGER trg_expense_shares_on_participant
   AFTER INSERT OR UPDATE OR DELETE ON expense_participants
   DEFERRABLE INITIALLY DEFERRED
   FOR EACH ROW EXECUTE FUNCTION check_expense_shares();
+
+-- ----------------------------------------------------------------------------
+-- Activity log: who added or deleted what, per trip. Keeps a snapshot of the
+-- expense (no foreign key to expenses), so deleted ones still show in the log.
+-- Personal expenses are logged too but, like the expenses themselves, are
+-- only ever shown to the person who paid (filter on type = 'personal').
+-- ----------------------------------------------------------------------------
+CREATE TABLE trip_activity (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  group_id          uuid   NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+  actor_id          uuid   NOT NULL REFERENCES users(id)  ON DELETE CASCADE,
+  action            text   NOT NULL CHECK (action IN ('expense_added','expense_deleted')),
+  expense_id        uuid,                                   -- may no longer exist
+  type              text   NOT NULL CHECK (type IN ('shared','extra','personal')),
+  category          text   NOT NULL,
+  description       text,
+  amount_minor      bigint NOT NULL,
+  currency          char(3) NOT NULL,
+  amount_base_minor bigint NOT NULL,
+  created_at        timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX idx_trip_activity_group ON trip_activity (group_id, created_at DESC);
+
+-- One row per person to tell about an activity: the people in the split,
+-- never the person who made the change. share_base_minor is THEIR share.
+CREATE TABLE notifications (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id          uuid   NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  activity_id      uuid   NOT NULL REFERENCES trip_activity(id) ON DELETE CASCADE,
+  share_base_minor bigint,
+  read_at          timestamptz,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (user_id, activity_id)
+);
+CREATE INDEX idx_notifications_user ON notifications (user_id, created_at DESC);
 
 -- ----------------------------------------------------------------------------
 -- Settlement: who pays whom, with the fewest payments (computed by server code).
