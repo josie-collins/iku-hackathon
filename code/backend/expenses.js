@@ -12,9 +12,11 @@ const {
   splitEvenly, splitByWeights, weightsFromItems, computeBalances, settleUp, countsTowardsPace, pace,
 } = require('./logic/expenses');
 const gemini = require('./gemini');
+const { transcribe, speak } = require('./integrations/elevenlabs');
 const router = express.Router({ mergeParams: true });
 
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic'];
+const AUDIO_TYPES = /^audio\/(webm|mp4|mpeg|ogg|wav|x-m4a|aac)$/;
 
 const TYPES = ['shared', 'extra', 'personal'];
 const CATEGORIES = ['food', 'extras', 'accommodation', 'transport', 'other'];
@@ -187,6 +189,58 @@ router.post('/parse-receipt', async (req, res) => {
   res.json(draft ? { draft, source: 'gemini' } : { draft: null, source: 'manual' });
 });
 
+// "€42" rather than "€42.00", so it reads naturally when spoken.
+const sayMoney = (minor, currency) => new Intl.NumberFormat('en-GB', {
+  style: 'currency', currency, minimumFractionDigits: minor % 100 ? 2 : 0,
+}).format(minor / 100);
+
+// One sentence saying what was saved and who owes the payer what, e.g.
+// "Saved €42 for Dinner. Amara owes you €18 and Lucia owes you €6."
+function confirmation({ members, me, type, description, amountMinor, currency, shares, baseCurrency }) {
+  const what = `Saved ${sayMoney(amountMinor, currency)}${String(description).trim() ? ` for ${String(description).trim()}` : ''}`;
+  if (type === 'personal') return `${what}, just for you.`;
+  const owes = shares
+    .filter((s) => s.userId !== me)
+    .map((s) => `${members.find((m) => m.user_id === s.userId)?.name || 'Someone'} owes you ${sayMoney(s.shareMinor, baseCurrency)}`);
+  if (!owes.length) return `${what}. It's all yours.`;
+  const list = owes.length > 1 ? `${owes.slice(0, -1).join(', ')} and ${owes[owes.length - 1]}` : owes[0];
+  return `${what}. ${list}.`;
+}
+
+// Read a short confirmation out loud (ElevenLabs text-to-speech). Returns mp3.
+router.post('/speak', async (req, res) => {
+  const trip = await loadTrip(req, res);
+  if (!trip) return;
+  const text = String(req.body?.text || '').trim();
+  if (!text || text.length > 300) return res.status(400).json({ error: 'Send up to 300 characters of text.' });
+  const audio = await speak(text);
+  if (!audio) return res.status(503).json({ error: 'Voice is unavailable right now.' });
+  res.type('audio/mpeg').send(audio);
+});
+
+// Voice note -> draft expense: ElevenLabs writes down what was said, Gemini reads it.
+// Saves nothing, like parse-receipt. The transcript is returned so the user can see what was heard.
+router.post('/parse-voice', async (req, res) => {
+  const trip = await loadTrip(req, res);
+  if (!trip) return;
+  const { audio_base64 } = req.body || {};
+  const mimeType = String(req.body?.mime_type || '').split(';')[0]; // "audio/webm;codecs=opus" -> "audio/webm"
+  if (!audio_base64 || !AUDIO_TYPES.test(mimeType)) {
+    return res.status(400).json({ error: { code: 'bad_audio', message: 'Send audio_base64 and an audio mime_type.' } });
+  }
+  const transcript = await transcribe(Buffer.from(audio_base64, 'base64'), mimeType);
+  if (!transcript) return res.json({ transcript: null, draft: null, source: 'manual' });
+
+  const members = await loadMembers(trip.id);
+  const me = members.find((m) => m.user_id === req.user.userId);
+  const draft = await gemini.parseTranscript(transcript, {
+    members,
+    me: me.user_id,
+    defaultCurrency: me.home_currency || trip.base_currency,
+  });
+  res.json({ transcript, draft, source: draft ? 'gemini' : 'manual' });
+});
+
 // Log something you paid for
 router.post('/expenses', async (req, res) => {
   const trip = await loadTrip(req, res);
@@ -273,7 +327,10 @@ router.post('/expenses', async (req, res) => {
       shares,
     });
     await client.query('COMMIT');
-    res.status(201).json({ id: expense.id });
+    res.status(201).json({
+      id: expense.id,
+      confirmation: confirmation({ members, me, type, description, amountMinor, currency, shares, baseCurrency: trip.base_currency }),
+    });
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {});
     throw err;

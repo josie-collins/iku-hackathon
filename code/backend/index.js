@@ -4,7 +4,7 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' })); // receipt photos and voice notes are sent as base64
 
 app.get('/', (req, res) => res.send('Hello from the backend'));
 app.get('/api/health', (req, res) => res.json({ ok: true }));

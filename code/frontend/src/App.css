@@ -463,6 +463,28 @@ select {
   cursor: progress;
 }
 
+.capture {
+  display: flex;
+  gap: 8px;
+}
+
+.capture .scan-button {
+  flex: 1;
+  margin: 0;
+  font-weight: 600;
+}
+
+button.scan-button {
+  background: white;
+}
+
+button.scan-button.recording {
+  border-style: solid;
+  border-color: #b3261e;
+  background: #b3261e;
+  color: white;
+}
+
 .items {
   border: none;
   padding: 0;
