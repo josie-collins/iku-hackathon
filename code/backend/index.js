@@ -15,6 +15,8 @@ app.use('/api/account', require('./account'));
 app.use('/api/friends', require('./friends'));
 app.use('/api/trips', require('./trips'));
 app.use('/api/notifications', require('./notifications'));
+app.use('/api/insights', require('./explore'));
+app.use('/api/rates', require('./rates'));
 
 // Malformed ids (e.g. not a UUID) are the caller's mistake, not a server error.
 app.use((err, req, res, next) => {

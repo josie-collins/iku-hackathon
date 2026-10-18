@@ -5,6 +5,7 @@
     "dev": "node code/scripts/dev.js",
     "setup": "node code/scripts/dev.js --setup-only",
     "db:reset": "npm --prefix code/backend run db:reset",
-    "snowflake:sync": "npm --prefix code/backend run snowflake:sync"
+    "snowflake:sync": "npm --prefix code/backend run snowflake:sync",
+    "flights:refresh": "npm --prefix code/backend run flights:refresh --"
   }
 }

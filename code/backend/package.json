@@ -10,7 +10,8 @@
     "start": "node index.js",
     "test": "node --test \"tests/*.test.js\"",
     "db:reset": "node db/reset.js",
-    "snowflake:sync": "node db/sync-snowflake.js"
+    "snowflake:sync": "node db/sync-snowflake.js",
+    "flights:refresh": "node db/refresh-flights.js"
   },
   "dependencies": {
     "dotenv": "^18.0.8",

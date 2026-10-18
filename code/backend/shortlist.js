@@ -136,7 +136,11 @@ async function recomputeQuietly(groupId) {
   try {
     const result = await recomputeGroup(groupId);
     // New options get a "why this fits" reason from Cortex, in the background.
-    if (result && result.status === 'voting') require('./explanations').explainInBackground(groupId);
+    if (result && result.status === 'voting') {
+      require('./explanations').explainInBackground(groupId);
+      // Live prices for the shortlisted options only (cached; drops any that no longer fit).
+      require('./flightQuotes').flightsInBackground(groupId);
+    }
     return result;
   } catch (err) {
     console.error(`recompute failed for group ${groupId}:`, err.message);

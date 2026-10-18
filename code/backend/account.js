@@ -7,6 +7,9 @@ const { convertMinor } = require('./logic/fx');
 const { explanationInput, templateReason } = require('./logic/explain');
 const router = express.Router();
 
+// A month's figure needs at least this many trip-days behind it, or we use the yearly one.
+const MIN_MONTH_DAYS = 5;
+
 // The logged-in user's profile and every group they're in, with their OWN budget
 // and dates for each. Never returns anyone else's budget: those joins are on the caller.
 router.get('/', auth, async (req, res) => {
@@ -47,7 +50,7 @@ router.get('/', auth, async (req, res) => {
      ORDER BY m.name`, [groupIds]);
   // Votes are anonymous: totals per option, plus only the caller's own vote.
   const { rows: options } = await db.query(
-    `SELECT o.id, o.group_id, d.city, d.country_code, d.tags, d.image_url, d.image_credit_url,
+    `SELECT o.id, o.group_id, o.destination_id, d.city, d.country_code, d.tags, d.image_url, d.image_credit_url,
             to_char(o.window_start, 'YYYY-MM-DD') AS window_start,
             to_char(o.window_end, 'YYYY-MM-DD') AS window_end,
             o.est_cost_pp_minor, o.currency, o.summary,
@@ -66,18 +69,22 @@ router.get('/', auth, async (req, res) => {
   let pastSpend = () => null;
   if (options.length) {
     try {
-      const [{ byCity, source }, fx] = await Promise.all([
+      const [{ byCity, byCityMonth, source }, fx] = await Promise.all([
         destinationSpend(),
         getRates('EUR', options.map((o) => o.currency)),
       ]);
+      // The month the option starts in, when there's enough data for that month; otherwise the yearly figure.
       pastSpend = (o) => {
-        const city = byCity[o.city];
-        if (!city) return null;
+        const month = Number(o.window_start.slice(5, 7));
+        const inMonth = byCityMonth?.[o.city]?.[month];
+        const figure = inMonth && inMonth.days >= MIN_MONTH_DAYS ? inMonth : byCity[o.city];
+        if (!figure) return null;
         return {
-          per_person_day_minor: convertMinor(city.perPersonDayMinor, 'EUR', o.currency, fx.rates),
+          per_person_day_minor: convertMinor(figure.perPersonDayMinor, 'EUR', o.currency, fx.rates),
           currency: o.currency,
-          days: city.days,
-          sample_only: city.sampleOnly,
+          month: figure === inMonth ? month : null, // null = yearly average
+          days: figure.days,
+          sample_only: figure.sampleOnly,
           source,
         };
       };
@@ -85,6 +92,39 @@ router.get('/', auth, async (req, res) => {
       console.error('past spend unavailable:', err.message);
     }
   }
+
+  // The caller's OWN flight for each option: a live quote for those dates if we have
+  // one, otherwise the sample estimate. Other members' flights are never sent.
+  const me = users[0];
+  const destIds = [...new Set(options.map((o) => o.destination_id))];
+  const { rows: myQuotes } = me.departure_airport && destIds.length ? await db.query(
+    `SELECT destination_id, to_char(outbound_date, 'YYYY-MM-DD') AS outbound, to_char(return_date, 'YYYY-MM-DD') AS ret,
+            price_minor, currency, airline, stops, google_flights_url, fetched_at
+     FROM flight_quotes WHERE origin = $1 AND destination_id = ANY($2::uuid[])
+     ORDER BY fetched_at DESC`, [me.departure_airport, destIds]) : { rows: [] };
+  const { rows: mySamples } = me.departure_airport && destIds.length ? await db.query(
+    `SELECT destination_id, price_minor, currency, google_flights_url
+     FROM flight_estimates WHERE origin = $1 AND destination_id = ANY($2::uuid[])`, [me.departure_airport, destIds]) : { rows: [] };
+  let flightFx = null;
+  if (myQuotes.length || mySamples.length) {
+    flightFx = await getRates('EUR', [me.home_currency, ...myQuotes.map((q) => q.currency), ...mySamples.map((q) => q.currency)])
+      .catch(() => null);
+  }
+  const yourFlight = (o) => {
+    const live = myQuotes.find((q) => q.destination_id === o.destination_id && q.outbound === o.window_start && q.ret === o.window_end);
+    const pick = live || mySamples.find((q) => q.destination_id === o.destination_id);
+    if (!pick || !flightFx) return null;
+    return {
+      from: me.departure_airport,
+      price_minor: convertMinor(Number(pick.price_minor), pick.currency, me.home_currency, flightFx.rates),
+      currency: me.home_currency,
+      airline: live ? live.airline : null,
+      stops: live ? live.stops : null,
+      google_flights_url: pick.google_flights_url,
+      source: live ? 'live' : 'sample',
+      fetched_at: live ? live.fetched_at : null,
+    };
+  };
 
   // Each trip's combined trip styles (for the reasons), without saying who likes what.
   const groupStyles = (groupId) => [...new Set(members.filter((m) => m.group_id === groupId).flatMap((m) => m.trip_styles || []))];
@@ -97,6 +137,7 @@ router.get('/', auth, async (req, res) => {
       options: options.filter((o) => o.group_id === trip.group_id).map(({ group_id, summary, ...o }) => ({
         ...o,
         past_spend: pastSpend(o),
+        your_flight: yourFlight(o),
         // Cortex's sentence if it wrote one, otherwise a plain template reason.
         reason: summary
           ? { text: summary, source: 'cortex' }

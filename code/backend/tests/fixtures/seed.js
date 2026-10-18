@@ -19,7 +19,7 @@ function members() {
     },
     {
       userId: AMARA, name: 'Amara', currency: 'NGN', departureAirport: 'LOS',
-      flightBudgetMinor: 45000000, groupBudgetMinor: 85000000, dailyBudgetMinor: 7000000,
+      flightBudgetMinor: 140000000, groupBudgetMinor: 85000000, dailyBudgetMinor: 7000000,
       acceptsStretch: null, minNights: 4, maxNights: 7, tripStyles: ['beach', 'culture'],
       availability: [{ start: '2027-06-08', end: '2027-06-30' }],
     },
@@ -47,12 +47,12 @@ const destinations = [
 }));
 
 const flights = [
-  ['LHR', 'Lisbon', 9000, 'GBP'], ['LHR', 'Porto', 8500, 'GBP'], ['LHR', 'Barcelona', 8000, 'GBP'], ['LHR', 'Valencia', 9500, 'GBP'],
-  ['LHR', 'Prague', 8800, 'GBP'], ['LHR', 'Budapest', 9200, 'GBP'], ['LHR', 'Athens', 12000, 'GBP'], ['LHR', 'Split', 11000, 'GBP'],
+  ['LHR', 'Lisbon', 17000, 'GBP'], ['LHR', 'Porto', 16000, 'GBP'], ['LHR', 'Barcelona', 10000, 'GBP'], ['LHR', 'Valencia', 18500, 'GBP'],
+  ['LHR', 'Prague', 17500, 'GBP'], ['LHR', 'Budapest', 18500, 'GBP'], ['LHR', 'Athens', 21000, 'GBP'], ['LHR', 'Split', 20000, 'GBP'],
   ['MAD', 'Lisbon', 7000, 'EUR'], ['MAD', 'Porto', 7500, 'EUR'], ['MAD', 'Barcelona', 6000, 'EUR'], ['MAD', 'Valencia', 5500, 'EUR'],
   ['MAD', 'Prague', 11000, 'EUR'], ['MAD', 'Budapest', 12000, 'EUR'], ['MAD', 'Athens', 13000, 'EUR'], ['MAD', 'Split', 14000, 'EUR'],
-  ['LOS', 'Lisbon', 38000000, 'NGN'], ['LOS', 'Porto', 40000000, 'NGN'], ['LOS', 'Barcelona', 42000000, 'NGN'], ['LOS', 'Valencia', 45000000, 'NGN'],
-  ['LOS', 'Prague', 48000000, 'NGN'], ['LOS', 'Budapest', 50000000, 'NGN'], ['LOS', 'Athens', 52000000, 'NGN'], ['LOS', 'Split', 55000000, 'NGN'],
+  ['LOS', 'Lisbon', 128000000, 'NGN'], ['LOS', 'Porto', 130000000, 'NGN'], ['LOS', 'Barcelona', 129000000, 'NGN'], ['LOS', 'Valencia', 128000000, 'NGN'],
+  ['LOS', 'Prague', 145000000, 'NGN'], ['LOS', 'Budapest', 148000000, 'NGN'], ['LOS', 'Athens', 152000000, 'NGN'], ['LOS', 'Split', 160000000, 'NGN'],
 ].map(([origin, city, priceMinor, currency]) => ({
   origin, destinationId: `dest-${city.toLowerCase()}`, priceMinor, currency,
 }));

@@ -51,7 +51,7 @@ test('options contain no budgets, ceiling or margins', () => {
 });
 
 test('raising Amara\'s flight budget adds Prague and Budapest', () => {
-  const r = findOptions(input({ members: withMember(AMARA, { flightBudgetMinor: 50000000 }) }));
+  const r = findOptions(input({ members: withMember(AMARA, { flightBudgetMinor: 150000000 }) }));
   assert.deepEqual(cities(r), ['Budapest', 'Lisbon', 'Porto', 'Prague', 'Valencia']);
 });
 

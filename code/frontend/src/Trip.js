@@ -3,6 +3,7 @@ import { api, formatMoney } from './api';
 import { currencyLabel, currencyOptions } from './currencies';
 import { describeActivity, timeAgo } from './Notifications';
 import Avatar, { AvatarStack } from './Avatar';
+import { Approx, RatesProvider } from './money';
 
 const LOGGABLE = ['booked', 'on_trip'];
 
@@ -42,7 +43,7 @@ export default function Trip({ groupId, onBack, onLogOut }) {
   if (error) {
     return (
       <>
-        <button className="link back" onClick={onBack}>← All trips</button>
+        <button className="link back" onClick={onBack}>← Your trips</button>
         <p className="error">{error}</p>
       </>
     );
@@ -69,8 +70,9 @@ export default function Trip({ groupId, onBack, onLogOut }) {
   };
 
   return (
-    <>
-      <button className="link back" onClick={onBack}>← All trips</button>
+    // Trip amounts stay in the trip's currency; <Approx> adds "≈" in yours when they differ.
+    <RatesProvider currency={myCurrency} codes={[trip.base_currency, ...members.map((m) => m.home_currency)]}>
+      <button className="link back" onClick={onBack}>← Your trips</button>
 
       <section className="card trip-header">
         {trip.image_url && (
@@ -124,7 +126,7 @@ export default function Trip({ groupId, onBack, onLogOut }) {
       <Ledger data={data} nameOf={nameOf} avatarOf={avatarOf} canDelete={canLog} groupId={groupId} onChanged={load} />
       <Activity activity={data.activity} nameOf={nameOf} avatarOf={avatarOf} />
       <SettleUp data={data} nameOf={nameOf} avatarOf={avatarOf} isOrganiser={isOrganiser} canSettle={canLog} groupId={groupId} onChanged={load} />
-    </>
+    </RatesProvider>
   );
 }
 
@@ -288,6 +290,7 @@ function Ledger({ data, nameOf, avatarOf, canDelete, groupId, onChanged }) {
                 </div>
                 <div className="price">
                   {formatMoney(e.amount_minor, e.currency)}
+                  <Approx minor={e.amount_minor} from={e.currency} />
                   {converted && (
                     <div className="muted small">
                       ≈ {formatMoney(e.amount_base_minor, trip.base_currency)}
@@ -300,7 +303,12 @@ function Ledger({ data, nameOf, avatarOf, canDelete, groupId, onChanged }) {
                 {e.type === 'personal'
                   ? 'Only you can see this'
                   : `Split between ${e.participants.map((p) => nameOf(p.user_id)).join(', ')}`}
-                {myShare != null && e.type !== 'personal' && ` · your share ${formatMoney(myShare, trip.base_currency)}`}
+                {myShare != null && e.type !== 'personal' && (
+                  <span>
+                    · your share {formatMoney(myShare, trip.base_currency)}
+                    <Approx minor={myShare} from={trip.base_currency} />
+                  </span>
+                )}
                 {canDelete && e.payer_id === me && (
                   <button className="link danger" onClick={() => remove(e)}>Delete</button>
                 )}
@@ -333,6 +341,7 @@ function Activity({ activity, nameOf, avatarOf }) {
 
 function SettleUp({ data, nameOf, avatarOf, isOrganiser, canSettle, groupId, onChanged }) {
   const { trip, me, balances, suggested, settlements, rates } = data;
+  const myCurrency = data.members.find((m) => m.user_id === me)?.home_currency || trip.base_currency;
   const [busy, setBusy] = useState(false);
 
   const settle = async () => {
@@ -370,6 +379,7 @@ function SettleUp({ data, nameOf, avatarOf, isOrganiser, canSettle, groupId, onC
               <span className={b.balance_base_minor > 0 ? 'owed' : b.balance_base_minor < 0 ? 'owes' : 'muted'}>
                 {b.balance_base_minor > 0 && `is owed ${formatMoney(b.balance_base_minor, trip.base_currency)}`}
                 {b.balance_base_minor < 0 && `owes ${formatMoney(-b.balance_base_minor, trip.base_currency)}`}
+                {b.balance_base_minor !== 0 && <Approx minor={Math.abs(b.balance_base_minor)} from={trip.base_currency} />}
                 {b.balance_base_minor === 0 && 'all square'}
               </span>
             </li>
@@ -386,6 +396,10 @@ function SettleUp({ data, nameOf, avatarOf, isOrganiser, canSettle, groupId, onC
                 <div className="muted small">
                   {formatMoney(p.amount_minor, p.currency)}
                   {p.currency !== trip.base_currency && ` (${formatMoney(p.amount_base_minor, trip.base_currency)})`}
+                  {/* Only when neither amount above is already in the viewer's currency */}
+                  {p.currency !== myCurrency && trip.base_currency !== myCurrency && (
+                    <Approx minor={p.amount_minor} from={p.currency} />
+                  )}
                   {p.settled_at && ' · paid'}
                 </div>
               </div>

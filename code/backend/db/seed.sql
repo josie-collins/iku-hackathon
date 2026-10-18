@@ -46,11 +46,11 @@ INSERT INTO group_members (group_id, user_id, role, trip_styles, min_nights, max
 -- Private budgets, each in the member's own currency (minor units).
 -- group_minor = total for accommodation + shared core costs for the whole trip.
 -- Tom (GBP): flight 250.00 | group 500.00 | daily 60.00
--- Amara (NGN): flight 450,000.00 | group 850,000.00 | daily 70,000.00
+-- Amara (NGN): flight 1,400,000.00 | group 850,000.00 | daily 70,000.00
 -- Lucia (EUR): flight 200.00 | group 450.00 | daily 55.00
 INSERT INTO budgets (group_id, user_id, flight_minor, group_minor, private_daily_minor, currency) VALUES
   ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '11111111-1111-1111-1111-111111111111',    25000,    50000,    6000, 'GBP'),
-  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '22222222-2222-2222-2222-222222222222', 45000000, 85000000, 7000000, 'NGN'),
+  ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '22222222-2222-2222-2222-222222222222', 140000000, 85000000, 7000000, 'NGN'),
   ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '33333333-3333-3333-3333-333333333333',    20000,    45000,    5500, 'EUR');
 
 -- Free dates: overlap is 2027-06-08 to 2027-06-20
@@ -60,37 +60,49 @@ INSERT INTO availability (group_id, user_id, start_date, end_date) VALUES
   ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '33333333-3333-3333-3333-333333333333', '2027-06-05', '2027-06-25');
 
 -- Sample flight estimates in each traveller's own currency (source = 'sample').
--- Amara's flight budget (₦450,000) rules out Prague, Budapest, Athens and Split,
+-- Roughly real return fares (live Google Flights prices checked Oct 2026 were in this range).
+-- Amara's flight budget (₦1,400,000) rules out Prague, Budapest, Athens and Split,
 -- which shows the per-person flight filter working in the demo.
 INSERT INTO flight_estimates (origin, destination_id, price_minor, currency, source)
 SELECT f.origin, d.id, f.price_minor, f.currency, 'sample'
 FROM (VALUES
-  ('LHR','Lisbon',     9000,'GBP'), ('LHR','Porto',      8500,'GBP'), ('LHR','Barcelona', 8000,'GBP'), ('LHR','Valencia', 9500,'GBP'),
-  ('LHR','Prague',     8800,'GBP'), ('LHR','Budapest',   9200,'GBP'), ('LHR','Athens',    12000,'GBP'), ('LHR','Split',   11000,'GBP'),
+  ('LHR','Lisbon',    17000,'GBP'), ('LHR','Porto',     16000,'GBP'), ('LHR','Barcelona',10000,'GBP'), ('LHR','Valencia',18500,'GBP'),
+  ('LHR','Prague',    17500,'GBP'), ('LHR','Budapest',  18500,'GBP'), ('LHR','Athens',   21000,'GBP'), ('LHR','Split',   20000,'GBP'),
   ('MAD','Lisbon',     7000,'EUR'), ('MAD','Porto',      7500,'EUR'), ('MAD','Barcelona', 6000,'EUR'), ('MAD','Valencia', 5500,'EUR'),
   ('MAD','Prague',    11000,'EUR'), ('MAD','Budapest',  12000,'EUR'), ('MAD','Athens',    13000,'EUR'), ('MAD','Split',   14000,'EUR'),
-  ('LOS','Lisbon',  38000000,'NGN'), ('LOS','Porto',  40000000,'NGN'), ('LOS','Barcelona', 42000000,'NGN'), ('LOS','Valencia', 45000000,'NGN'),
-  ('LOS','Prague',  48000000,'NGN'), ('LOS','Budapest',50000000,'NGN'), ('LOS','Athens',  52000000,'NGN'), ('LOS','Split',  55000000,'NGN')
+  ('LOS','Lisbon', 128000000,'NGN'), ('LOS','Porto', 130000000,'NGN'), ('LOS','Barcelona',129000000,'NGN'), ('LOS','Valencia',128000000,'NGN'),
+  ('LOS','Prague', 145000000,'NGN'), ('LOS','Budapest',148000000,'NGN'), ('LOS','Athens', 152000000,'NGN'), ('LOS','Split', 160000000,'NGN')
 ) AS f(origin, city, price_minor, currency)
 JOIN destinations d ON d.city = f.city;
 
--- Sample past-group spending: 30 days x 3 categories x 8 destinations.
+-- Sample past-group spending: a full year (Oct 2025 - Sep 2026) x 3 categories x 8 cities.
+-- SAMPLE DATA with an ILLUSTRATIVE seasonal pattern we made up (not real prices):
+-- pricier in summer and at Christmas, cheaper in winter and late autumn. Beach
+-- destinations swing harder (deeper winter dip, bigger summer peak).
 -- Deterministic pseudo-random noise (hashtext) so re-running gives the same numbers.
 INSERT INTO sample_trip_spend (destination_id, spent_on, group_size, category, per_person_minor, currency)
 SELECT
   d.id,
-  (DATE '2026-05-01' + g)::date,
+  day::date,
   4,
   c.category,
-  CASE c.category
-    WHEN 'food'       THEN d.food_pp_day_minor
-    WHEN 'activities' THEN d.activities_pp_day_minor
-    ELSE 800
-  END + (abs(hashtext(d.city || g::text || c.category)) % 600),
+  round(
+    (CASE c.category
+       WHEN 'food'       THEN d.food_pp_day_minor
+       WHEN 'activities' THEN d.activities_pp_day_minor
+       ELSE 800
+     END)
+    * (1 + (m.factor - 1) * CASE WHEN 'beach' = ANY (d.tags) THEN 1.5 ELSE 1 END)
+  )::bigint + (abs(hashtext(d.city || day::date::text || c.category)) % 600),
   'EUR'
 FROM destinations d
-CROSS JOIN generate_series(0, 29) AS g
-CROSS JOIN (VALUES ('food'), ('activities'), ('transport')) AS c(category);
+CROSS JOIN generate_series(DATE '2025-10-01', DATE '2026-09-30', INTERVAL '1 day') AS day
+JOIN (VALUES (1, 0.85), (2, 0.85), (3, 0.92), (4, 1.00), (5, 1.02), (6, 1.12),
+             (7, 1.22), (8, 1.25), (9, 1.05), (10, 0.95), (11, 0.86), (12, 1.05)
+     ) AS m(month, factor) ON m.month = extract(month FROM day)
+CROSS JOIN (VALUES ('food'), ('activities'), ('transport')) AS c(category)
+-- Only the 8 cities (the day-hike spots have no past-group data).
+WHERE d.accommodation_pp_night_minor > 0;
 
 -- Extra groups so the account page has a current and a past trip to show.
 -- The demo group above stays the one used by the 3-minute demo and the tests.
@@ -173,8 +185,8 @@ INSERT INTO destinations
 INSERT INTO flight_estimates (origin, destination_id, price_minor, currency, source)
 SELECT 'BER', d.id, f.price_minor, 'EUR', 'sample'
 FROM (VALUES
-  ('Lisbon', 12000), ('Porto', 11000), ('Barcelona', 9000), ('Valencia', 10000),
-  ('Prague',  6000), ('Budapest', 7000), ('Athens',  11000), ('Split',    9500)
+  ('Lisbon', 15000), ('Porto', 18000), ('Barcelona', 11000), ('Valencia', 16500),
+  ('Prague', 18000), ('Budapest', 10500), ('Athens', 17000), ('Split',   16000)
 ) AS f(city, price_minor)
 JOIN destinations d ON d.city = f.city;
 
@@ -271,19 +283,19 @@ FROM (VALUES
   ('20000000-0000-0000-0000-000000000006', 'jonas',    10000,    28000,     5000),
   ('20000000-0000-0000-0000-000000000007', 'mateo',    15000,    40000,     6000),
   ('20000000-0000-0000-0000-000000000007', 'lucia',    15000,    35000,     5000),
-  ('20000000-0000-0000-0000-000000000007', 'priya',    15000,    30000,     5000),
-  ('20000000-0000-0000-0000-000000000008', 'kemi',  45000000, 60000000,  8000000),
-  ('20000000-0000-0000-0000-000000000008', 'amara', 50000000, 70000000,  9000000),
+  ('20000000-0000-0000-0000-000000000007', 'priya',    22000,    30000,     5000),
+  ('20000000-0000-0000-0000-000000000008', 'kemi', 140000000, 60000000,  8000000),
+  ('20000000-0000-0000-0000-000000000008', 'amara', 145000000, 70000000,  9000000),
   -- Spring holidays
   ('20000000-0000-0000-0000-000000000009', 'priya',    15000,    60000,     5000),
   ('20000000-0000-0000-0000-000000000009', 'kemi',  55000000, 110000000, 9000000),
   ('20000000-0000-0000-0000-000000000009', 'amara', 55000000, 120000000, 9000000),
-  ('20000000-0000-0000-0000-000000000010', 'tom',      20000,    90000,     6000),
-  ('20000000-0000-0000-0000-000000000010', 'priya',    15000,    70000,     5000),
-  ('20000000-0000-0000-0000-000000000010', 'jonas',    15000,    80000,     5500),
-  ('20000000-0000-0000-0000-000000000010', 'aisha',    18000,    60000,     5500),
-  ('20000000-0000-0000-0000-000000000011', 'kemi',  55000000, 10000000,  8000000),
-  ('20000000-0000-0000-0000-000000000011', 'amara', 55000000, 12000000,  8000000),
+  ('20000000-0000-0000-0000-000000000010', 'tom',      25000,    90000,     6000),
+  ('20000000-0000-0000-0000-000000000010', 'priya',    22000,    70000,     5000),
+  ('20000000-0000-0000-0000-000000000010', 'jonas',    23000,    80000,     5500),
+  ('20000000-0000-0000-0000-000000000010', 'aisha',    23000,    60000,     5500),
+  ('20000000-0000-0000-0000-000000000011', 'kemi', 145000000, 10000000,  8000000),
+  ('20000000-0000-0000-0000-000000000011', 'amara', 145000000, 12000000,  8000000),
   ('20000000-0000-0000-0000-000000000011', 'mateo',    15000,    20000,     5000)
 ) AS b(group_id, username, flight, grp, daily)
 JOIN users u ON u.username = b.username;
@@ -413,3 +425,9 @@ FROM (VALUES
   ('Guadarrama', '/images/destinations/guadarrama.jpg', 'https://commons.wikimedia.org/wiki/File:Viajando_%2891445844%29_%28color%2C_contrast%29.jpg')
 ) AS i(city, image_url, credit_url)
 WHERE d.city = i.city;
+
+-- Airport codes for live flight searches (the day-hike spots have none).
+UPDATE destinations d SET airport = a.code
+FROM (VALUES ('Lisbon', 'LIS'), ('Porto', 'OPO'), ('Barcelona', 'BCN'), ('Valencia', 'VLC'),
+             ('Prague', 'PRG'), ('Budapest', 'BUD'), ('Athens', 'ATH'), ('Split', 'SPU')) AS a(city, code)
+WHERE d.city = a.city;
