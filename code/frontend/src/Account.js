@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, formatMoney } from './api';
 import Friends from './Friends';
 import Trip from './Trip';
@@ -106,7 +106,10 @@ export default function Account({ onLogOut }) {
     // Shared trip prices stay in the trip's currency; <Approx> adds "≈" in the viewer's own.
     <RatesProvider currency={user.home_currency} codes={trips.map((t) => t.base_currency)}>
       <header className="topbar">
-        <button className="brand" onClick={goHome}>Group Trip Planner</button>
+        <button className="brand" onClick={goHome} aria-label="Wise Piggy: home">
+          <img src={`${process.env.PUBLIC_URL}/logo-mark.png`} alt="" width="52" height="40" />
+          <span className="brand-name">Wise <span>Piggy</span></span>
+        </button>
         <nav className="topnav" aria-label="Pages">
           <button aria-current={page === 'home' ? 'page' : undefined} onClick={goHome}>Home</button>
           <button aria-current={page === 'insights' ? 'page' : undefined} onClick={showInsights}>Insights</button>
@@ -198,12 +201,24 @@ function ProfileCard({ user, trips, friendCount }) {
 }
 
 function TripsHome({ user, trips, creating, setCreating, onChanged, onOpenTrip, onFindFriends }) {
+  // The shortlist opens below the cards rather than inside one, so every card stays the same size.
+  const [shortlistFor, setShortlistFor] = useState(null);
   const card = (trip) => (
-    <TripCard key={trip.group_id} trip={trip} user={user} onChanged={onChanged} onOpen={() => onOpenTrip(trip.group_id)} />
+    <TripCard
+      key={trip.group_id}
+      trip={trip}
+      user={user}
+      onChanged={onChanged}
+      onOpen={() => onOpenTrip(trip.group_id)}
+      showingOptions={shortlistFor === trip.group_id}
+      onToggleOptions={() => setShortlistFor(shortlistFor === trip.group_id ? null : trip.group_id)}
+    />
   );
+  const grid = (list) => <div className="trip-grid">{list.map(card)}</div>;
   const current = trips.filter((t) => CURRENT.includes(t.status));
   const planned = trips.filter((t) => PLANNED.includes(t.status));
   const past = trips.filter((t) => PAST.includes(t.status));
+  const shortlistTrip = planned.find((t) => t.group_id === shortlistFor && t.status === 'voting');
 
   return (
     <>
@@ -225,17 +240,18 @@ function TripsHome({ user, trips, creating, setCreating, onChanged, onOpenTrip, 
       {current.length > 0 && (
         <section>
           <h3 className="section-title">On the trip now</h3>
-          {current.map(card)}
+          {grid(current)}
         </section>
       )}
       <section>
         <h3 className="section-title">Planning and booked</h3>
-        {planned.length ? planned.map(card) : <p className="muted">No trips being planned. Start one with “Plan a new trip”.</p>}
+        {planned.length ? grid(planned) : <p className="muted">No trips being planned. Start one with “Plan a new trip”.</p>}
+        {shortlistTrip && <Shortlist trip={shortlistTrip} onChanged={onChanged} onClose={() => setShortlistFor(null)} />}
       </section>
       {past.length > 0 && (
         <details className="past-trips">
           <summary className="section-title">Past trips ({past.length})</summary>
-          {past.map(card)}
+          {grid(past)}
         </details>
       )}
     </>
@@ -314,7 +330,7 @@ function NewTrip({ onCancel, onCreated, onFindFriends }) {
   );
 }
 
-function TripCard({ trip, user, onChanged, onOpen }) {
+function TripCard({ trip, user, onChanged, onOpen, showingOptions, onToggleOptions }) {
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState('');
   const isOpen = OPEN.includes(trip.status);
@@ -334,7 +350,11 @@ function TripCard({ trip, user, onChanged, onOpen }) {
 
   return (
     <article className="card trip">
-      {!isOpen && trip.image_url && <img className="trip-photo" src={trip.image_url} alt={trip.city} loading="lazy" />}
+      {!isOpen && trip.image_url ? (
+        <img className="trip-photo" src={trip.image_url} alt={trip.city} loading="lazy" />
+      ) : (
+        <div className="trip-photo trip-photo-empty" aria-hidden="true">{isOpen ? '🗺️' : '🐷'}</div>
+      )}
       <header>
         <h3>{trip.name}</h3>
         <span className={`status status-${trip.status}`}>{STATUS_LABELS[trip.status] || trip.status}</span>
@@ -354,66 +374,68 @@ function TripCard({ trip, user, onChanged, onOpen }) {
         With {others.length ? others.map((m) => m.name).join(', ') : 'nobody else yet'}
       </p>
 
-      {isOpen && <GroupProgress trip={trip} onChanged={onChanged} />}
+      {isOpen && <GroupProgress trip={trip} showingOptions={showingOptions} onToggleOptions={onToggleOptions} />}
       {!isOpen && (
         <button className="open-trip" onClick={onOpen}>
           {trip.status === 'settled' ? 'Expenses and payments' : 'Expenses'} →
         </button>
       )}
 
-      <h4>Your private details</h4>
-      <p className="muted small">Only you can see these. The group only sees what fits everyone.</p>
-      {editing ? (
-        <BudgetForm
-          trip={trip}
-          currency={budgetCurrency}
-          askDates={isOpen}
-          onCancel={() => setEditing(false)}
-          onSaved={() => {
-            setEditing(false);
-            onChanged();
-          }}
-        />
-      ) : (
-        <>
-          {trip.budget ? (
-            <dl className="budget">
-              {BUDGET_FIELDS.map((f) => (
-                <div key={f.key} className="budget-row">
-                  <dt>{f.label}</dt>
-                  <dd>{formatMoney(trip.budget[f.key], budgetCurrency)}</dd>
-                </div>
-              ))}
-              {isOpen && (
-                <div className="budget-row">
-                  <dt>Free</dt>
-                  <dd>{trip.free_from ? formatDates(trip.free_from, trip.free_to) : 'Not set'}</dd>
-                </div>
+      <div className="trip-private">
+        <h4>Your private details</h4>
+        <p className="muted small">Only you can see these. The group only sees what fits everyone.</p>
+        {editing ? (
+          <BudgetForm
+            trip={trip}
+            currency={budgetCurrency}
+            askDates={isOpen}
+            onCancel={() => setEditing(false)}
+            onSaved={() => {
+              setEditing(false);
+              onChanged();
+            }}
+          />
+        ) : (
+          <>
+            {trip.budget ? (
+              <dl className="budget">
+                {BUDGET_FIELDS.map((f) => (
+                  <div key={f.key} className="budget-row">
+                    <dt>{f.label}</dt>
+                    <dd>{formatMoney(trip.budget[f.key], budgetCurrency)}</dd>
+                  </div>
+                ))}
+                {isOpen && (
+                  <div className="budget-row">
+                    <dt>Free</dt>
+                    <dd>{trip.free_from ? formatDates(trip.free_from, trip.free_to) : 'Not set'}</dd>
+                  </div>
+                )}
+              </dl>
+            ) : (
+              <p>You haven't entered a budget yet.</p>
+            )}
+            {error && <p className="error">{error}</p>}
+            <div className="row">
+              {canEdit && (
+                <button className="secondary" onClick={() => setEditing(true)}>
+                  {trip.budget ? 'Edit' : 'Add budget and dates'}
+                </button>
               )}
-            </dl>
-          ) : (
-            <p>You haven't entered a budget yet.</p>
-          )}
-          {error && <p className="error">{error}</p>}
-          <div className="row">
-            {canEdit && (
-              <button className="secondary" onClick={() => setEditing(true)}>
-                {trip.budget ? 'Edit' : 'Add budget and dates'}
-              </button>
-            )}
-            {isOpen && (
-              <button className="secondary danger" onClick={leave}>Drop out</button>
-            )}
-          </div>
-        </>
-      )}
+              {isOpen && (
+                <button className="secondary danger" onClick={leave}>Drop out</button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
     </article>
   );
 }
 
-// What the whole group sees: progress, then the "fits everyone" shortlist.
+// What the whole group sees: progress, and a button for the "fits everyone" shortlist.
 // Never shows a budget, the ceiling, or who is limiting.
-function GroupProgress({ trip, onChanged }) {
+function GroupProgress({ trip, showingOptions, onToggleOptions }) {
   const total = trip.members.length;
   return (
     <div className="group-box">
@@ -436,17 +458,41 @@ function GroupProgress({ trip, onChanged }) {
       {trip.status === 'voting' && (
         <>
           <p>
-            <strong>Fits everyone</strong> <span className="muted small">· vote yes or no. Votes are anonymous; everyone sees totals only.</span>
+            <strong>{trip.options.length} {trip.options.length === 1 ? 'option fits' : 'options fit'} everyone.</strong>{' '}
+            <span className="muted small">Votes are anonymous.</span>
           </p>
-          <ul className="options">
-            {trip.options.map((o) => (
-              <OptionCard key={o.id} option={o} trip={trip} total={total} onChanged={onChanged} />
-            ))}
-          </ul>
-          <p className="muted small">Prices are estimates from sample data.</p>
+          <button className="secondary" aria-expanded={showingOptions} onClick={onToggleOptions}>
+            {showingOptions ? 'Hide options' : 'See options and vote ↓'}
+          </button>
         </>
       )}
     </div>
+  );
+}
+
+// The shortlist for one trip, full width under the trip cards.
+function Shortlist({ trip, onChanged, onClose }) {
+  const ref = useRef(null);
+  const total = trip.members.length;
+  useEffect(() => {
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [trip.group_id]);
+
+  return (
+    <section className="card shortlist" ref={ref} aria-labelledby="shortlist-heading">
+      <header className="shortlist-head">
+        <div>
+          <h3 id="shortlist-heading" className="card-title">{trip.name}: options that fit everyone</h3>
+          <p className="muted small">Vote yes or no. Votes are anonymous; everyone sees totals only.</p>
+        </div>
+        <button className="secondary" onClick={onClose}>Close</button>
+      </header>
+      <ul className="options">
+        {trip.options.map((o) => (
+          <OptionCard key={o.id} option={o} trip={trip} total={total} onChanged={onChanged} />
+        ))}
+      </ul>
+    </section>
   );
 }
 
@@ -467,10 +513,7 @@ function YourFlight({ flight: f }) {
       <span aria-hidden="true">✈ </span>
       Your flight from {f.from}: <strong>~{roundMoney(f.price_minor, f.currency)}</strong> return
       {details.length > 0 && ` · ${details.join(' · ')}`}
-      <span className="muted">
-        {' · '}
-        {live ? `live price, ${timeAgo(f.fetched_at)}` : 'sample estimate'}
-      </span>
+      {live && <span className="muted">{` · live price, ${timeAgo(f.fetched_at)}`}</span>}
       {f.google_flights_url && (
         <>
           {' · '}
@@ -525,7 +568,6 @@ function OptionInsights({ option: o }) {
         />
       )}
       {city.split && <SplitBar split={city.split} currency={data.currency} />}
-      <p className="muted small">Sample data with a made-up seasonal pattern: illustrative only.</p>
     </div>
   );
 }
@@ -608,7 +650,7 @@ function OptionCard({ option: o, trip, total, onChanged }) {
             {o.past_spend.month ? `In ${MONTH_NAMES[o.past_spend.month - 1]}, past groups spent about ` : 'Past groups spent about '}
             <strong>{formatMoney(o.past_spend.per_person_day_minor, o.past_spend.currency)}</strong>
             <Approx minor={o.past_spend.per_person_day_minor} from={o.past_spend.currency} /> per person a day
-            here{o.past_spend.sample_only && ' · sample data'}
+            here
           </p>
         )}
         <div className="vote-row">

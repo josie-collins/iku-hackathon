@@ -33,9 +33,10 @@ const fail = (msg) => {
 };
 
 function checkNode() {
-  const [major, minor] = process.versions.node.split('.').map(Number);
-  if (major < 18 || (major === 18 && minor < 11)) {
-    fail(`Node ${process.versions.node} is too old. Install Node 18.11 or newer (20+ recommended).`);
+  const [major] = process.versions.node.split('.').map(Number);
+  // snowflake-sdk needs Node 20+
+  if (major < 20) {
+    fail(`Node ${process.versions.node} is too old. Install Node 20 or newer (22 recommended).`);
   }
 }
 

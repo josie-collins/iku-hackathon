@@ -13,7 +13,7 @@ import pandas as pd
 import streamlit as st
 from snowflake.snowpark.context import get_active_session
 
-st.set_page_config(page_title="Trip spending insights", layout="wide")
+st.set_page_config(page_title="Wise Piggy: trip spending insights", layout="wide")
 
 # Validated categorical slots (blue, orange): pass CVD and contrast checks on a light surface.
 BLUE = "#2a78d6"
@@ -67,9 +67,9 @@ def style(chart):
 
 trips, spend, places = load()
 
-st.title("Trip spending insights")
+st.title("Wise Piggy: trip spending insights")
 st.caption(
-    "Anonymised data from the group trip planner: no budgets, names or user ids, no personal spending, "
+    "Anonymised data from Wise Piggy: no budgets, names or user ids, no personal spending, "
     "and no trips with fewer than 3 people. Amounts are in EUR, per person."
 )
 

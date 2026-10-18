@@ -20,7 +20,9 @@ function App() {
     <main className={token ? 'App app-shell' : 'App'}>
       {!token && (
         <>
-          <h1>Group Trip Planner</h1>
+          <h1 className="logo-hero">
+            <img src={`${process.env.PUBLIC_URL}/logo-full.png`} alt="Wise Piggy" width="320" height="250" />
+          </h1>
           <p className="tagline">Transparent costs, private budgets.</p>
         </>
       )}
