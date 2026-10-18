@@ -1,6 +1,6 @@
 # Budget Group Trip Planner – System Design
 
-How we're building the app and why. The backlog in `internal-team-doc.md` covers *what* we're building and in what order; this doc covers *how* each part works. Exact request and response formats are in `api-contract.md`.
+How the app works and why, as built (updated 18 Oct 2026). Exact request and response formats are in [api_contract.md](api_contract.md). The build plan is in [internal_plan.md](internal_plan.md).
 
 ---
 
@@ -9,36 +9,42 @@ How we're building the app and why. The backlog in `internal-team-doc.md` covers
 **Goals**
 - A group can agree on a trip without anyone seeing anyone else's budget.
 - Every number shown to a user is either their own private data or a group outcome that reveals nothing about individuals.
-- Money maths is deterministic, testable and in the right currency.
-- AI is used for reading and writing (receipts, speech, explanations), never for budget decisions.
+- Money maths is deterministic, tested, and in the right currency.
+- AI is used for reading and speaking (receipts, speech, short reasons), never for budget decisions.
 
 **Non-goals for the hackathon**
-- Real booking or payments inside the app. We hand off to booking sites and Wise.
-- Full account system with passwords.
-- Live flight and hotel prices. We use sample data stored in the database, labelled as such.
+- Real booking or payments inside the app. We hand off to Wise.
+- Stay search, itineraries and the re-planning agent (see section 9).
 
 ---
 
 ## 2. Architecture
 
 ```
- React frontend
+ React frontend (code/frontend/src)
+   │  Account (trips, budgets, shortlist, voting) · Trip (expenses, pace, settle-up)
+   │  Friends · Notifications · Insights
    │  every request carries a JWT identifying the user
    ▼
- Express API ── auth middleware sets req.user
+ Express API (code/backend)
+   ├── session.js, auth.js       signup/login (scrypt hashes), JWT middleware sets req.user
+   ├── route files               account, budgets, trips, booking, expenses, friends,
+   │                             notifications, explore (insights), rates
+   ├── shortlist.js              recompute "fits everyone" when budgets or members change
+   ├── flightQuotes.js           live flight prices for the shortlist, in the background
+   ├── explanations.js           Cortex "why this fits" reasons, in the background
+   ├── insights.js               "past groups spent about X a day", Snowflake → Postgres fallback
+   ├── gemini.js                 receipt and transcript parsing
+   ├── logic/                    pure functions, no DB or network, unit-tested
+   └── integrations/             wise, flights (SerpApi), elevenlabs, snowflake
    │
-   ├── routes/        thin: validate input, call services, shape the response
-   ├── services/      read/write the database, call logic and integrations
-   ├── logic/         pure functions, no DB or network (easy to unit-test)
-   └── integrations/  Wise, Gemini, ElevenLabs, each with a fallback
-   │
-   ▼
- PostgreSQL on Tiger Data (expenses as a hypertable)
+   ├──▶ PostgreSQL               app data; timescale.sql makes it Tiger Data–ready
+   └──▶ Snowflake                anonymised analytics copy, Streamlit dashboard
 ```
 
-We're splitting it this way so the rules that protect privacy and money sit in one place (`logic/` and `services/`) where we can test them. Routes stay thin, which makes it easy to see what each endpoint returns. Integrations are kept separate, so if Gemini or Wise goes down, only that feature is affected.
+The rules that protect privacy and money sit in `logic/` and `shortlist.js`, where they're tested. Each integration is its own file with its own fallback, so if one provider is down only that feature degrades.
 
-**Deployment:** one Vultr server. Express serves both the built React app and the API from the same origin, so we don't have to deal with CORS. Our GoDaddy domain points at it.
+`npm run dev` (`code/scripts/dev.js`) installs packages, creates `.env` with a random `JWT_SECRET`, and runs both servers.
 
 ---
 
@@ -46,89 +52,56 @@ We're splitting it this way so the rules that protect privacy and money sit in o
 
 | Decision | Choice | Why |
 | --- | --- | --- |
-| Where privacy is enforced | In server code: every private query is filtered by `req.user.id`, and responses are built from explicit field lists | Hiding fields in the UI isn't privacy. We won't mention row-level security in the pitch unless we actually build it. |
-| Auth | Invite code + name → signed JWT. Demo has a user switcher. | Fast to build, still identifies the user on every request. |
-| Money storage | Integers in minor units (pence, cents, kobo) as `BIGINT` | Floats cause rounding errors in splits. |
-| Currencies | Each person's values stored in their own currency. Comparisons happen in the group's base currency (EUR). | Lets Maya think in GBP and Daniel in NGN, while the maths stays consistent. |
-| Exchange rates | Wise rate, cached; every expense stores the rate, source and time used | Settlement is reproducible and transparent. |
-| AI boundary | AI receives tags, receipts, transcripts and filtered options, never budgets | Budget decisions stay deterministic and private. |
-| Sample data | Stored in real tables with `is_sample = true`, labelled in the UI | Real queries, honest labelling, avoids "hardcoded shortcuts". |
+| Where privacy is enforced | In server code: every private query is filtered by `req.user.userId`, and responses are built from explicit field lists. `v_member_public` exposes only public member fields. | Hiding fields in the UI isn't privacy. We don't claim row-level security. |
+| Auth | Username and password (scrypt), signed JWT for 7 days. A wrong username takes as long as a wrong password. | Real accounts for the friends feature, without revealing which usernames exist. |
+| Money storage | Integers in minor units as `BIGINT` | Floats cause rounding errors in splits. |
+| Currencies | Each person's budget is in their home currency. Comparisons happen in the group's base currency (the organiser's). | Tom thinks in GBP and Amara in NGN, while the maths stays consistent. |
+| Exchange rates | Wise rates, cached for an hour. Every expense stores the rate, source and time. | Settlement is reproducible and transparent. |
+| AI boundary | `gemini.js` doesn't import the database. Cortex input is built by `explanationInput()`, which drops all money, names and ids. | Budgets can't reach a model by accident. |
+| AI output | Every parsed receipt or voice note is a draft. Nothing is saved until the user confirms. Amounts are converted to minor units in our code, not by the model. | The user stays in control and the maths stays exact. |
+| Sample data | Destinations, reference prices and past-group spend are real tables, read through real queries, labelled "sample". | Honest labelling without hardcoded shortcuts. |
 
 ---
 
-## 4. Database design
+## 4. Database
 
-The tables fall into five groups. Each group answers one question.
+Schema: `code/backend/db/schema.sql`. Sample data: `seed.sql`. `npm run db:reset` rebuilds both.
 
-### 4.1 Who is in the trip?
-- **`users`**: name, home currency, nationality, home airport. Home currency decides how amounts are shown to this person.
-- **`groups`**: invite code, base currency (EUR), and status (`planning`, `trip`, `settled`). Status drives which screens are available.
-- **`group_members`**: joins users to groups. A user could be in several groups.
+| Question | Tables |
+| --- | --- |
+| Who is in the trip? | `users`, `friendships`, `groups` (status, base currency, trip dates, demo `current_day`), `group_members` (role, trip styles, min/max nights) |
+| What can each person afford? **Private.** | `budgets` (flight, group, private daily, currency, `accepts_stretch`), `availability` |
+| What options exist? | `destinations` (sample costs, tags, photo), `flight_estimates` (sample), `flight_quotes` (live SerpApi prices, cached) |
+| What did the group decide? | `destination_options` (the shortlist and its Cortex summary), `votes`, `resolution_rounds`, `resolution_prompts` |
+| What was spent? | `expenses` (amount as paid, amount in base currency, rate source and time, type, category, trip day), `expense_participants` (each person's share), `settlements` |
+| What happened? | `trip_activity`, `notifications`, `daily_checkins` |
+| Past groups | `sample_trip_spend` |
 
-### 4.2 What does each person want and can afford? (private)
-- **`private_inputs`**: three budgets per person per group (flight, group, personal), the currency they entered them in, and `stretch_ok` (their answer to "accept slightly above your number?"). **This is the most sensitive table.** Only the owner's row is ever returned, and only the logic layer reads all rows.
-- **`availability`**: date ranges each person is free, plus min and max nights.
-- **`preferences`**: trip-style tags and dietary needs. These are safe to send to Gemini because they contain no money.
-
-### 4.3 What options exist? (sample data)
-- **`destinations`**: city, tags, typical stay cost per person per night, typical food cost per person per day.
-- **`flight_estimates`**: price from each origin airport to each destination.
-- **`activities`**: name, price, tags, per destination.
-- **`stays`**: name, area, rating, price per person per night, and `available` (the agent scenario flips this to false).
-
-All prices here are stored in EUR, since they're reference data rather than anyone's own money.
-
-### 4.4 What did the group decide?
-- **`votes`**: one row per person per option. `target_type` lets the same table hold destination, stay and activity votes. Only totals are ever returned.
-- **`trips`**: the chosen destination, stay and dates.
-- **`trip_activities`**: activities on the plan, marked `core` (everyone, paid from the group budget) or `optional`.
-- **`activity_optins`**: who joined each optional activity. This decides who shares its cost.
-
-### 4.5 What was spent?
-- **`expenses`**: amount and currency as paid, the rate to EUR at that time, the rate's source, the type (`shared`, `extra`, `personal`) and how it was entered (`manual`, `receipt`, `voice`).
-- **`expense_participants`**: who shares each expense. Personal expenses have only the payer.
-- **`fx_rates`**: cached rates with source and time, so we don't call Wise on every request and can fall back when it's down.
-- **`nudges`**: which evening nudges were sent and answered.
-
-### 4.6 Tiger Data features we use
-- **`expenses` is a hypertable** partitioned on `spent_at`. Tiger Data needs unique keys on hypertables to include the time column, so our primary key is `(id, spent_at)`. We'll double-check this in their docs when we set it up.
-- **A continuous aggregate** of spend per group per day. It powers the pacing message, the spending chart, and the "groups spent about €X per day here" figure on the shortlist.
-
-### 4.7 Relationships at a glance
-
-```
-users ─┬─ group_members ─── groups ─── trips ─── trip_activities ─── activity_optins
-       ├─ private_inputs ───┘           │
-       ├─ availability ─────┘           ├── destinations ── activities, stays, flight_estimates
-       ├─ preferences ──────┘           │
-       └─ votes ────────────┘           │
-groups ─── expenses ─── expense_participants ─── users
-```
+**Tiger Data.** `code/backend/db/timescale.sql` turns `sample_trip_spend` into a hypertable and adds a continuous aggregate of spend per destination per day. It's optional: the app computes the same averages with an ordinary query on plain Postgres.
 
 ---
 
-## 5. Core logic
+## 5. Core logic (`code/backend/logic/`)
 
-All of these are pure functions in `backend/src/logic/`, tested with fixed inputs.
+**Date overlap (`dates.js`).** Merge each person's free ranges, intersect everyone's, and keep windows long enough for the group's minimum nights.
 
-**Date overlap.** Intersect everyone's free ranges. Keep windows at least as long as the largest `min_nights`, cap at the smallest `max_nights`, and return up to three windows.
+**Ceiling (`ceiling.js`).** Convert every group budget to the base currency. `ceiling = lowest + min(10% of (highest − lowest), 10% of lowest)`. Anyone below it must have agreed to stretch, otherwise the ceiling drops to their budget. Nobody can answer the stretch question in the UI yet, so for now the ceiling is the lowest budget.
 
-**Ceiling.** Convert every group budget to EUR. The ceiling is `lowest + min(10% of (highest − lowest), 10% of lowest)`. Anyone whose budget is below the ceiling is asked privately whether they accept slightly more; if they say no, the ceiling drops to their budget. The ceiling never leaves this function.
+**Feasibility (`feasibility.js`).** An option fits only if, for every member: their flight is within their flight budget, the daily food estimate is within their private daily budget, and the shared cost per person is within the ceiling. Trip length is chosen to keep the shared cost at or below 90% of the ceiling, so prices never sit right at someone's limit. If nothing fits, the group status becomes `resolving` and everyone sees the same neutral message. The diagnostics on who blocks what are server-only.
 
-**Feasibility.** For each destination and date window, an option fits only if all three checks pass for every member:
-1. their flight estimate is within their flight budget;
-2. the shared cost per person (stay × nights + core activities) is within the ceiling;
-3. the food estimate (food per day × nights) is within their personal budget.
+**Live flights (`flights.js` and `flightQuotes.js`).** After the shortlist is built from sample estimates, live round-trip prices are fetched only for the routes it needs (cached for 12 hours, with a monthly search reserve). Any option a live price pushes over someone's flight budget is dropped, without saying whose.
 
-Options are ranked by the smallest margin across all members, so the top options are the ones where nobody is stretched. Return 3–5, labelled "fits everyone".
+**Exchange (`fx.js`).** Conversion on minor units, aware of zero- and three-decimal currencies.
 
-**No match.** If nothing fits, every member gets a private prompt at the same time. Members whose own budget or dates are limiting get specific suggestions; everyone else gets general ones. After 24 hours (or a demo button), the group sees a neutral message.
+**Expenses (`expenses.js`).**
+- `splitEvenly`: leftover minor units go one each to the first people, so shares always add up.
+- `weightsFromItems` and `splitByWeights`: for receipts, each person's weight is the sum of their items (shared items split evenly). The total, including tax and tip, is split in proportion to those weights, using the largest-remainder method.
+- `computeBalances` and `settleUp`: net balance per person, then the largest debtor pays the largest creditor until everyone is at zero, which gives a small number of payments. Each payment is converted into the payer's home currency.
+- `pace`: the private daily budget × days so far, compared with the person's share of food, extras and personal spending.
 
-**Budget plan.** Once a trip is chosen: group view = shared cost per person. Private view = committed to shared costs, food estimate, optional activities joined, and what's left. Recalculated whenever votes or opt-ins change.
+**Analytics (`analytics.js`).** Builds the anonymised rows for Snowflake: salted-hash trip keys, shared and extra spending only, and no trips with fewer than 3 people.
 
-**Pacing.** Daily allowance = (personal budget − personal and extra spend so far) ÷ days left. Compare with today's spend to produce a message and an over/under flag.
-
-**Settlement.** Compute each person's net balance in EUR from shared and extra expenses. Repeatedly match the largest debtor with the largest creditor until all balances are zero. This gives a small number of payments. Convert each payment into the payer's home currency at the latest stored rate and show the rate and its source.
+**Explanations (`explain.js`).** Builds the money-free Cortex input and prompt, rejects replies that mention money, and provides the template reason.
 
 ---
 
@@ -136,37 +109,46 @@ Options are ranked by the smallest margin across all members, so the top options
 
 | Data | Who can see it |
 | --- | --- |
-| Your three budgets, dates, stretch answer | You only |
-| Your private breakdown and pacing | You only |
-| Shortlist, shared cost per person, vote totals | Whole group |
-| Who joined an optional activity | Whole group (still to confirm as a team) |
-| Shared and extra expenses | Participants |
+| Your three budgets, your dates | You only |
+| Your flight price per option | You only |
+| Your pace | You only |
+| Shortlist, vote totals | Whole group |
+| Shared and extra expenses | Whole group |
 | Personal expenses | You only |
-| Ceiling, who is limiting, raw budgets of others | Nobody; never leaves the server |
+| Ceiling, who is limiting, others' budgets and votes | Nobody. Never leaves the server. |
+| Snowflake | Anonymised trips with 3+ people only |
 
-**Less obvious leaks we need to watch for**
-- Error messages that name a person or a number ("Maya's budget is too low").
-- Prompts sent only to the limiting person. Send prompts to everyone at once.
-- Showing the most expensive option right at the ceiling. Show options well under it, never sorted by price descending.
-- Groups of two, where budgets can be inferred. Show a warning before they start.
+**Less obvious leaks we guard against**
+- Error messages that name a person or a number.
+- An option disappearing after a live flight price: the group isn't told whose flight it was.
+- The most expensive option sitting right at the ceiling (the 90% headroom).
+- Groups of two, where budgets can be inferred: both people see a warning first.
 
 ---
 
 ## 7. External integrations
 
-| Service | Used for | Input | Output | If it fails |
-| --- | --- | --- | --- | --- |
-| Wise | Exchange rates, payment handoff | Currency pair | Rate | Use last cached rate, labelled "cached" with its time |
-| Gemini | Receipt parsing, voice parsing, option reasons, itinerary, agent | Image, transcript, tags, filtered options | Structured JSON | Manual entry form; generic reason text |
-| ElevenLabs | Speech-to-text for expenses, reading nudges aloud | Audio / text | Transcript / audio | Typed input; text nudge |
-| Tiger Data | Database, hypertable, continuous aggregate | SQL | Rows | Core of the app; no fallback needed |
-
-**Every AI output is a draft.** Parsed receipts and spoken expenses are shown for confirmation before saving.
-
-**The adaptive agent** handles one scenario: the chosen stay becomes unavailable. Gemini can call two tools we write: `findStays(destination, dates)` and `checkFits(stayId)`. `checkFits` runs our feasibility logic and returns only `fits` or `doesn't fit`. The agent proposes a replacement and explains why; the user confirms.
+| Service | Used for | Sends | If it fails |
+| --- | --- | --- | --- |
+| Wise (sandbox) | Exchange rates, "Pay with Wise" link | Currency pairs | Last good Wise rate, then a static table. Always labelled `fallback`. |
+| SerpApi (Google Flights) | Live flight prices | Airports and dates | Sample estimates. NGN is priced in EUR and converted, since Google Flights rejects NGN. |
+| Gemini | Receipt and voice parsing | Receipt image, or the transcript plus trip member names | Lighter fallback model on 429/503, then manual entry |
+| ElevenLabs | Speech-to-text (`scribe_v2`), spoken confirmation (`eleven_v4_turbo`) | The recording, and the confirmation sentence | Typed entry, no audio |
+| Snowflake | Analytics warehouse, Streamlit dashboard, Cortex reasons | Anonymised rows; tags, styles, nights and month | Postgres for the numbers, template text for reasons. Cortex isn't on trial accounts. |
 
 ---
 
-## 8. Demo data and reset
+## 8. Demo data
 
-Our seed creates Maya (London, GBP), Daniel (Lagos, NGN) and Sofia (Madrid, EUR) with deliberately different budgets and partly overlapping dates, plus 8 destinations with flights from all three airports, activities and stays. A reset script puts the seed back in seconds, so we can run the demo as many times as we need.
+`seed.sql` creates Tom (London, GBP), Amara (Lagos, NGN, vegetarian) and Lucia (Madrid, EUR) with different budgets and partly overlapping dates, plus more users, 12 destinations with photos, sample flights, and past-group spending. `npm run db:reset` restores it in seconds.
+
+---
+
+## 9. Not built yet
+
+- **Re-planning agent** (incident.io track): reacts to a price jump, a sold-out stay or a dropout.
+- **Stretch consent screen** and **private-first resolution prompts**. The tables and logic exist, but there are no endpoints or UI yet.
+- **Two-track days** with optional extras, the budget-plan view, and itineraries.
+- **Stay search** and voting.
+- **Trip Wrapped.**
+- **Hosting on Vultr** and a GoDaddy domain.

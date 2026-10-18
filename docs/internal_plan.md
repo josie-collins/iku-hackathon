@@ -3,8 +3,18 @@
 Our working plan for the build, demo and pitch. This one stays internal, not on Devpost.
 
 Related files:
-- `system-design.md`: how the app works (architecture, database, logic, privacy)
-- `api-contract.md`: exact request and response formats for every endpoint
+- `system_design.md`: how the app works (architecture, database, logic, privacy)
+- `api_contract.md`: exact request and response formats for every endpoint
+
+## Status at 03:00 Sunday
+
+**Built, OK to demo:** accounts and friends; trips; private budgets and dates; hidden ceiling; date overlap; "fits everyone" shortlist with live SerpApi flight prices; "past groups spent about €X a day" (Snowflake, Postgres fallback); anonymous voting and booking; neutral no-match message; two-person warning; receipt scanning with Gemini and per-item split; voice entry (ElevenLabs → Gemini) with spoken confirmation; shared/extra/personal expenses at Wise rates with a labelled fallback; private pace; simulate next day; notifications; settle-up in home currencies with Wise links; Insights tab and Snowflake Streamlit dashboard.
+
+**Not built, "What's next" only:** re-planning agent (incident.io), stretch-consent screen and private-first prompts, two-track days and budget-plan view, itinerary, stay search, Trip Wrapped, Vultr hosting and domain.
+
+**Known issues:** 3 of 75 unit tests fail (`tests/wise.test.js`: the Wise-success and cache cases); the fallback cases pass. Cortex reasons fall back to templates on the Snowflake trial.
+
+**Demo users** are now Tom (London, GBP), Amara (Lagos, NGN) and Lucia (Madrid, EUR), not Maya, Daniel and Sofia.
 
 **Key deadlines**
 - Devpost draft started, with Wise as main track and side challenges selected: **Sat 17 Oct, 23:00**
@@ -41,17 +51,41 @@ They enter their limits privately, discover a trip that works for everyone, choo
 
 The moment we want judges to remember is when **everyone's private information turns into one shared result**.
 
-| Time | Step | Length | What happens |
-| --- | --- | --- | --- |
-| 0:00 | Open with the problem | 20s | "Planning a trip with friends is easy until everyone has a different budget. Usually, someone has to admit what they can't afford. We wanted to remove that conversation." |
-| 0:20 | Show the private budgets | 35s | Enter or load three different budgets and availability windows. Show that each person sees only their own information, not their friends' limits. |
-| 0:55 | Reveal the group shortlist | 35s | Show 2–3 feasible destinations, why they suit the group, and the anonymous vote. Explain that a deterministic matching function filters options against each member's private constraints. |
-| 1:30 | The budget plan | 25s | After the vote, show the group's shared cost per person, then switch to one person's private breakdown (shared costs, food, left for extras). One person skips an optional activity; the group sees no reason, and their breakdown updates. |
-| 1:55 | Log an expense with AI | 25s | Speak or scan a receipt, show the extracted amount and currency, confirm participants, save. Human confirmation before anything is recorded. Then show that person's private pacing update. |
-| 2:20 | Settlement + one adaptive action | 25s | Show who owes whom, with conversions and rates clearly labelled. If time permits, simulate a hotel becoming unavailable and show the agent proposing a replacement. |
-| 2:45 | Close on the value | 15s | "We're not just splitting the bill after the trip. We're helping people find a trip they can all comfortably say yes to." |
+The pitch is **live demo first, slides second**. The judges score "flawless live demo" under Presentation (30%), so slides only frame the story: about 30 seconds of slides, then the app.
 
-We don't need to show every feature. If the agent isn't reliable by feature freeze, we leave it out and keep the full flow from planning to settlement. **No optional feature is worth breaking the main story.**
+**Setup before going on stage**
+- Run `npm run db:reset`. The "Summer Trip" group (Tom, Amara, Lucia) then has a shortlist to vote on, and "Porto Weekend" (Lucia organises, with Tom and Amara) is a trip in progress for logging expenses and settling up.
+- Open three browser profiles (or one normal and two private windows), logged in as `tom`, `amara` and `lucia` (password `demo1234`), side by side.
+- Have a printed receipt ready (`receipt1.jpeg` or a real one), test the microphone, and turn the volume up for the read-back.
+- Keep the recorded video open in another tab as a backup in case the Wi-Fi or an API fails.
+
+**Live demo (3 minutes)**
+
+| Time | Who talks | What's on screen | Say |
+| --- | --- | --- | --- |
+| 0:00 | Speaker 1 | Slides 1–3 | "What's everyone's budget?" Nobody wants to answer, especially across countries and currencies. Our answer: budgets go in a sealed envelope. |
+| 0:30 | Speaker 2 | Tom's window: his budget in GBP. Switch to Amara's: hers in NGN. | Each person sees only their own numbers, in their own currency. |
+| 0:55 | Speaker 2 | Summer Trip shortlist: "Fits everyone", past-group spend, each person's own flight price | The server checked every budget and live flight prices. Nobody can see whose budget is the limit. Prague, Budapest, Athens and Split are missing because one person's flight doesn't fit, and nobody can tell whose. |
+| 1:25 | Speaker 2 | Tom and Lucia vote, and the totals update | Votes are anonymous: totals only. |
+| 1:40 | Speaker 1 | Porto Weekend: scan the receipt, tap who had what, save | Gemini reads every line. The bill splits by what each person actually had. |
+| 2:05 | Speaker 1 | Voice: "I paid 30 euros for lunch, Amara had the salad for 12". Confirm. Audio plays. | ElevenLabs hears it, Gemini drafts it, you confirm, and it reads back who owes what. |
+| 2:25 | Speaker 1 | Private pace line, then settle-up in GBP, NGN and EUR with "Pay with Wise" | Your pace is visible only to you. Settling up takes the fewest payments, each in the payer's own currency, at Wise rates. |
+| 2:45 | Speaker 2 | Slide 9 (AI disclosure) briefly, then slide 10 | AI reads and speaks; it never sees a budget. Next: a re-planning agent. "Transparent costs, private budgets." |
+
+If a provider fails live, say so and show the labelled fallback ("fallback rates", manual entry). That's part of the technical story. Don't hide it.
+
+**2-minute demo video (required on Devpost)**
+
+Record it as a screen recording with a voice-over (QuickTime on a Mac: File → New Screen Recording). Use the same flow as the live demo, minus the slides:
+
+1. 0:00–0:10: title card and the one-line problem.
+2. 0:10–0:35: private budgets in two windows, two currencies.
+3. 0:35–1:00: the shortlist, flight prices and anonymous voting.
+4. 1:00–1:25: receipt scan and per-item split.
+5. 1:25–1:45: voice entry with the audio read-back (keep the audio in the recording).
+6. 1:45–2:00: pace and settle-up with Wise, then the closing line.
+
+Upload it to YouTube (unlisted is fine) and link it on Devpost. Add the same video to the Canva deck after slide 7 as the backup.
 
 ---
 
@@ -177,15 +211,6 @@ Each integration goes into a feature we need anyway. We're not adding features j
 
 ---
 
-## AI disclosure (draft, 10% of the Wise score)
+## AI disclosure (10% of the Wise score)
 
-| Part | AI involved | What the team did |
-| --- | --- | --- |
-| Product idea and problem | None | Original team idea from brainstorming, refined with input from people at Wise |
-| Planning docs and Devpost wording | Claude helped structure and edit | Team wrote the drafts and decided scope, features and rules |
-| Matching, pacing and settlement code | _Fill in coding assistants used, if any_ | Team designed and wrote the logic |
-| Frontend and backend code | _Fill in tools (e.g. Copilot, Claude) and which files_ | Team reviewed, tested and integrated |
-| Receipt reading, voice parsing, itineraries, adaptive agent | Gemini and ElevenLabs, at runtime | Team wrote the prompts, tools and guardrails |
-| Demo dataset | _Fill in: script or AI-generated_ | Team defined the schema and checked values |
-
-Let's keep a running note of which files or features had AI help as we go, so this table is accurate when we submit.
+The full table now lives in the [README](../README.md#ai-disclosure), and the same content is on the AI disclosure slide. It's written at team level (how we used AI, not who did what). **Josie: before we submit, check it covers any AI tools you used**, for your code or the seed data. If you used any, add a row to the README table and the slide.
