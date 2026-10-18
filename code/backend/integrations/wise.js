@@ -7,7 +7,8 @@
 //
 // Returns rates in the shape logic/fx.js expects: { CCY: units per 1 base }.
 
-const WISE_API_URL = process.env.WISE_BASE_URL;
+// Sandbox unless set (live: https://api.wise.com). The key must match the environment.
+const WISE_API_URL = process.env.WISE_BASE_URL || 'https://api.wise-sandbox.com';
 const CACHE_MS = 60 * 60 * 1000; // one hour
 
 // APPROXIMATE placeholder rates, per 1 EUR. Only used when Wise can't be reached,

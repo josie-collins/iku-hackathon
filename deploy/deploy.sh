@@ -16,7 +16,7 @@ if [[ "${1:-}" == "--pull" ]]; then
 fi
 
 if [[ ! -f "$APP_DIR/code/backend/.env" ]]; then
-  echo "✖ $APP_DIR/code/backend/.env is missing. Copy it from your laptop first (see deploy/README.md)." >&2
+  echo "✖ $APP_DIR/code/backend/.env is missing. Copy it from your laptop first (variables listed in code/backend/.env.example)." >&2
   exit 1
 fi
 
