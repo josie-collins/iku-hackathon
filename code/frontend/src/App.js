@@ -20,7 +20,7 @@ function App() {
     <main className={token ? 'App app-shell' : 'App'}>
       {!token && (
         <>
-          <h1>Group Trip Planner</h1>
+          <h1>Wise Piggy</h1>
           <p className="tagline">Transparent costs, private budgets.</p>
         </>
       )}

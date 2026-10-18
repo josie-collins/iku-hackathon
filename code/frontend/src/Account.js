@@ -106,7 +106,7 @@ export default function Account({ onLogOut }) {
     // Shared trip prices stay in the trip's currency; <Approx> adds "≈" in the viewer's own.
     <RatesProvider currency={user.home_currency} codes={trips.map((t) => t.base_currency)}>
       <header className="topbar">
-        <button className="brand" onClick={goHome}>Group Trip Planner</button>
+        <button className="brand" onClick={goHome} aria-label="Wise Piggy: home">Wise Piggy</button>
         <nav className="topnav" aria-label="Pages">
           <button aria-current={page === 'home' ? 'page' : undefined} onClick={goHome}>Home</button>
           <button aria-current={page === 'insights' ? 'page' : undefined} onClick={showInsights}>Insights</button>

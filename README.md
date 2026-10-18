@@ -3,7 +3,7 @@ This is a repo that contains the IKU Womxn in STEM Hackathon code
 
 This project uses React for frontend and Node.js for backend. both need to be installed to run it.
 
-# Group Trip Planner — Product Description (Draft)
+# Wise Piggy — Product Description (Draft)
 
 Oct 17, 2026 · @Eva,Josie
 
@@ -13,7 +13,7 @@ Oct 17, 2026 · @Eva,Josie
 
 On the trip, every day has a shared core plan plus optional extras, so friends with different budgets can do different things without awkwardness. Expenses are logged in any currency by receipt photo or voice, each person sees their own private spending pace, and the trip settles up in everyone's home currency through Wise.
 
-Name: to be decided. Pitch line: *transparent costs, private budgets.*
+Name: **Wise Piggy**. Pitch line: *transparent costs, private budgets.*
 
 ## Problem
 

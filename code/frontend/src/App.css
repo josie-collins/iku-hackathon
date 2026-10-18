@@ -1537,7 +1537,7 @@ details.past-trips summary {
   }
 
   button.brand::before {
-    content: '✈';
+    content: '🐷';
     font-size: 1.3rem;
   }
 }

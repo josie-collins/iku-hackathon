@@ -1,5 +1,5 @@
 -- ============================================================================
--- Group Trip Planner: schema.sql  (Tier 1: the "spine")
+-- Wise Piggy: schema.sql  (Tier 1: the "spine")
 -- Target: PostgreSQL 13+ (works on Tiger Cloud / TimescaleDB, plain Postgres too)
 --
 -- Conventions

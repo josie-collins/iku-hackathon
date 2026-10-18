@@ -1,0 +1,28 @@
+# systemd service: runs Wise Piggy's backend, which also serves the built frontend.
+# Installed by deploy/setup-server.sh to /etc/systemd/system/wise-piggy.service
+#   sudo systemctl status wise-piggy      # is it running?
+#   sudo journalctl -u wise-piggy -f      # logs
+[Unit]
+Description=Wise Piggy (group trip planner)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=wisepiggy
+WorkingDirectory=/opt/wise-piggy/code/backend
+# Secrets come from code/backend/.env (dotenv); this only pins the port Caddy proxies to.
+Environment=NODE_ENV=production
+Environment=PORT=8080
+ExecStart=/usr/bin/node index.js
+Restart=on-failure
+RestartSec=3
+
+# Hardening: the app only needs its own folder
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

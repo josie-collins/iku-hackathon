@@ -1,6 +1,6 @@
 # Snowflake
 
-Snowflake is the trip planner's analytics warehouse. It only ever holds **anonymised** data: no budgets, names or user IDs, no personal spending, and no trips with fewer than 3 people. The rules are in `code/backend/logic/analytics.js`.
+Snowflake is Wise Piggy's analytics warehouse. It only ever holds **anonymised** data: no budgets, names or user IDs, no personal spending, and no trips with fewer than 3 people. The rules are in `code/backend/logic/analytics.js`.
 
 | Piece | Where |
 | --- | --- |
