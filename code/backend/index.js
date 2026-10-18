@@ -10,7 +10,7 @@ const PORT = process.env.PORT || 8080;
 const FRONTEND_BUILD = path.join(__dirname, '..', 'frontend', 'build');
 const serveFrontend = fs.existsSync(path.join(FRONTEND_BUILD, 'index.html'));
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' })); // receipt photos and voice notes are sent as base64
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 

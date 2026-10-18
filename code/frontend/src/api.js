@@ -14,6 +14,26 @@ export async function api(path, { method = 'GET', body } = {}) {
   return data;
 }
 
+// Read a sentence out loud with the backend's ElevenLabs voice. Never throws:
+// the spoken confirmation is a bonus, the result is already on screen.
+export async function speakAloud(groupId, text) {
+  try {
+    const token = localStorage.getItem('token');
+    const res = await fetch(`/api/trips/${groupId}/speak`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }) },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) return;
+    const url = URL.createObjectURL(await res.blob());
+    const audio = new Audio(url);
+    audio.onended = () => URL.revokeObjectURL(url);
+    await audio.play();
+  } catch {
+    // no voice, no problem
+  }
+}
+
 // Money from the API is in minor units (cents, pence, kobo). Postgres bigints arrive as strings.
 export function formatMoney(minor, currency) {
   return new Intl.NumberFormat(undefined, { style: 'currency', currency, currencyDisplay: 'narrowSymbol' }).format(Number(minor) / 100);
