@@ -1,5 +1,5 @@
 // Small hand-built SVG charts for destination insights. The stay/food/activities
-// split uses the validated categorical slots (blue, orange, aqua). The month chart
+// split uses the app palette's three hues (violet, pink, mint). The month chart
 // is deliberately colourless (ink, outline, grey) so it can't be confused with the
 // split shown next to it: no five hues stay distinguishable on one screen. Every
 // chart has hover values and a text alternative, so colour never carries meaning alone.
@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
 import { api, formatMoney } from './api';
 import { Approx } from './money';
 
-export const COLORS = { blue: '#2a78d6', orange: '#eb6834', aqua: '#1baf7a', grey: '#d3d2cc', ink: '#33322e', paper: '#ffffff' };
+export const COLORS = { violet: '#5233c9', pink: '#ff5c8a', mint: '#12a17c', grey: '#ddd8e8', ink: '#1e1b3a', paper: '#ffffff' };
 export const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 export const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August',
   'September', 'October', 'November', 'December'];
@@ -129,9 +129,9 @@ export function MonthBars({ months, currency, highlight = -1, label }) {
 }
 
 const PARTS = [
-  { key: 'stay_minor', label: 'Stay', color: COLORS.blue },
-  { key: 'food_minor', label: 'Food', color: COLORS.orange },
-  { key: 'activities_minor', label: 'Activities', color: COLORS.aqua },
+  { key: 'stay_minor', label: 'Stay', color: COLORS.violet },
+  { key: 'food_minor', label: 'Food', color: COLORS.pink },
+  { key: 'activities_minor', label: 'Activities', color: COLORS.mint },
 ];
 
 /** One stacked bar: a typical day's stay, food and activities, with the values written out. */
@@ -154,7 +154,7 @@ export function SplitBar({ split, currency }) {
           />
         ))}
       </div>
-      {/* Values as text: the aqua slot is low-contrast, so the legend carries the numbers */}
+      {/* Values as text: the pink slot is low-contrast, so the legend carries the numbers */}
       <figcaption className="chart-legend">
         {parts.map((p) => (
           <span key={p.key}>
