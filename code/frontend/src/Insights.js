@@ -21,8 +21,7 @@ export default function Insights() {
   return (
     <>
       <p className="muted small insights-note">
-        Anonymised spending from past trips plus a year of <strong>sample data</strong> with a made-up seasonal
-        pattern, so treat month-to-month differences as illustrative.{' '}
+        Anonymised spending from past trips.{' '}
         {data.source === 'snowflake' ? 'Via Snowflake.' : 'Worked out from the app database (Snowflake unavailable).'}
       </p>
 
@@ -61,7 +60,7 @@ export default function Insights() {
         {city.split && (
           <>
             <h4>A typical day</h4>
-            <p className="muted small">One night's stay, a day's food and a day's activities, per person. Sample data.</p>
+            <p className="muted small">One night's stay, a day's food and a day's activities, per person.</p>
             <SplitBar split={city.split} currency={currency} />
           </>
         )}
