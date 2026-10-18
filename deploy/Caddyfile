@@ -1,0 +1,6 @@
+# Caddy: HTTPS for your domain (certificates are automatic) in front of the app.
+# deploy/setup-server.sh replaces yourdomain.com and installs this to /etc/caddy/Caddyfile.
+wisepiggy.club, www.wisepiggy.club {
+	encode gzip
+	reverse_proxy localhost:8080
+}
