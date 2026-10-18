@@ -1,264 +1,138 @@
-# iku-hackathon
-This is a repo that contains the IKU Womxn in STEM Hackathon code
+# Wise Piggy
 
-This project uses React for frontend and Node.js for backend. both need to be installed to run it.
+**Transparent costs, private budgets.** A group trip planner where nobody has to say their budget out loud.
 
-# Wise Piggy — Product Description (Draft)
+Built in 24 hours at the [IKU Womxn in STEM Hackathon](https://iku-womxn-in-stem-hackathon.devpost.com/) (17–18 October 2026) by Eva Stamatovska and Josie Collins.
 
-Oct 17, 2026 · @Eva,Josie
+**Main track:** Wise – Max Ease. **Side challenges:** ElevenLabs, MLH Best Use of Gemini API, MLH Best Use of Snowflake API, MLH Best Use of Tiger Data.
 
-## Summary
+## The problem
 
-**A group trip planner where nobody has to say their budget out loud.** Each person enters their budget privately, and only the server can read it. The app finds dates, destinations and stays that fit everyone, and the group votes anonymously.
+Group trips stall on one awkward question: "What's everyone's budget?" People from different financial backgrounds, especially newer friends, don't want to answer. They overspend, stay quiet, or drop out.
 
-On the trip, every day has a shared core plan plus optional extras, so friends with different budgets can do different things without awkwardness. Expenses are logged in any currency by receipt photo or voice, each person sees their own private spending pace, and the trip settles up in everyone's home currency through Wise.
+It gets worse when friends live in different countries. Flights cost each person a different amount, everyone thinks in a different currency, and shared costs end up scattered across chat messages and forgotten receipts.
 
-Name: **Wise Piggy**. Pitch line: *transparent costs, private budgets.*
+## What it does
 
-## Problem
+Each person privately enters a budget. Only the server ever reads it. The app finds trips that fit everyone, the group votes anonymously, and on the trip everyone logs expenses by receipt photo or voice. At the end, everyone settles up in their own home currency through Wise.
 
-Group trips stall on one awkward question: "What's everyone's budget?" People from different financial backgrounds, especially newer friends, don't want to answer it. They overspend, stay quiet, or drop out.
+**Planning**
 
-The problem gets worse when friends live in different countries. Flights cost different amounts for each person, everyone thinks in a different currency, and the shared costs end up scattered across chat messages and forgotten receipts.
+- **Private budgets.** Each member enters three numbers in their home currency: flights, their share of group costs, and a private daily budget for food and extras. Nobody else ever sees them.
+- **Hidden group ceiling.** The server works out how much the group can spend on shared costs: `lowest + min(10% of (highest − lowest), 10% of lowest)`. The ceiling is never sent to any client.
+- **Date overlap.** Everyone marks when they're free. The server finds the windows that work for all of them.
+- **"Fits everyone" shortlist.** A destination only appears if, for every member, the flight, the shared cost and the daily food estimate are each within that person's own budget. Options are kept below the ceiling, so no price sits right at anyone's limit.
+- **Live flight prices** from SerpApi (Google Flights) for each member's own departure airport. If a live price pushes an option over someone's flight budget, the option quietly disappears.
+- **"Past groups spent about €X a day here"**, from anonymised trip data in Snowflake, with Postgres as the fallback.
+- **Anonymous voting and booking.** Everyone sees vote totals only, never who voted for what.
+- **No-match message.** If nothing fits, the group sees "No trip fits everyone yet" with neutral suggestions. It never says whose budget is the limit.
+- **Two-person warning.** In a group of two, budgets can be roughly worked out, so both people are warned before they enter one.
 
-**Who it's for:** friend groups of 3 to 10 people, often international students or young professionals, planning a trip where at least some members don't know each other's finances.
+**On the trip**
 
-## What makes it different
+- **Receipt scanning.** Snap a receipt and Gemini reads the total, currency, merchant, category and every item line. Tap who had each item, and the bill is split by what each person actually had.
+- **Voice entry.** Say "I paid 42 euros for dinner, Amara had the pasta for twelve". ElevenLabs transcribes it, Gemini turns it into a draft expense with items and people, and you confirm it. ElevenLabs then reads back what was saved, for example "Saved €42 for Dinner. Amara owes you €12."
+- **Shared, extra or personal.** Shared costs are split between everyone in them. Personal ones are visible only to the person who paid.
+- **Live Wise exchange rates.** Each expense saves the rate, source and time used. If Wise can't be reached, the app uses fallback rates and labels them as such.
+- **Private pace.** Each person sees a line only they can see, such as "You're €18 under your daily pace."
+- **Simulate next day**, so the demo can move through the trip.
+- **Notifications** when someone adds an expense you're part of.
 
-Other planners split costs after the fact. This one is designed around what people don't want to say.
+**Settling up**
 
-- **Private budgets.** Budgets are stored where only the server can read them. The group sees only outcomes labelled "fits everyone", never a number that hints at anyone's limit.
-- **Two-track days.** Every itinerary day has a core plan everyone can afford, plus optional extras people join privately. Skipping an extra looks the same as not being interested, and the app offers a cheap parallel option for the same time slot.
-- **Private-first resolution.** When nothing fits, each person is asked privately first, at the same moment, so being asked reveals nothing. The group only hears about it if nobody adjusts.
-- **Anonymous treats (stretch goal).** Anyone can quietly cover part of an extra for the whole group, like buying a round. The group sees "a friend chipped in", never who.
-- **Trip Wrapped.** At the end, the group gets a shareable recap: days, distance, top shared moments, total spent as a group. It never shows any individual's budget.
-- **Built for cross-border groups.** Each person uses their own currency, departure airport and nationality from the start, and everything settles in their home currency through Wise.
+- **Fewest payments.** The app works out who owes whom, converts each payment into the payer's home currency and links to Wise.
 
-## Budgets, dates and feasibility
-
-Each member privately enters three budgets in their home currency, their available dates and their trip style. The server turns these into a shortlist that fits everyone.
-
-| Bucket | Who sees it | Covers |
-| --- | --- | --- |
-| Flights | Owner only | Their own flight to the destination |
-| Group budget | Private input, shared outcome only | Accommodation and core shared activities |
-| Private budget | Owner only | Daily food, optional extras, personal spending |
-
-**Ceiling.** The group ceiling is computed server-side and never sent to any client:
-
-```latex
-\text{ceiling} = \text{lowest} + \min(0.1 \cdot (\text{highest} - \text{lowest}),\ 0.1 \cdot \text{lowest})
-```
-
-Anyone whose group budget is below the ceiling is privately asked whether they accept options slightly above their number. If they decline, the ceiling drops to their budget.
-
-**Dates.** Each member marks the date ranges they're free and their minimum and maximum trip length. The server finds overlapping windows that meet the minimum length and searches only those, capped at three windows to limit API calls.
-
-**Flights.** A destination only counts as a fit if every member's estimated flight for that window is within their own flight budget. This handles friends flying from different cities without touching the group budget.
-
-**Group size.**
-
-- 3 or more members: full privacy mode.
-- 2 members: all features work, but both people see a clear warning first: "In a group of two, your friend can roughly work out your budget from the options shown." They must tap to accept before entering budgets.
-
-## When nothing fits
-
-The app resolves conflicts privately first and only involves the group as a last step. Everyone gets a private message at the same moment, so receiving one tells you nothing about whether you're the limit.
-
-1. **Private round (24 hours).** Every member gets a personal prompt with options suited to them:
-   - Members whose budget, flight budget or dates are limiting: "The closest options start around €X per person. Could you raise your number, or open up more dates?"
-   - Everyone else: "Would you be open to a shorter trip, a cheaper region or off-peak dates?"
-2. **Recompute.** As soon as anyone updates their budget, dates or preferences, the server reruns feasibility. If options now fit, the group gets the shortlist as normal.
-3. **Group round.** If nothing fits after 24 hours, the whole group sees a neutral message: "No trip fits everyone yet." It comes with suggestions such as fewer nights, a closer region or different dates. It never says whose budget or availability is limiting.
-4. **Repeat.** Members update privately, and the app recomputes again.
-
-The same flow applies when no stays fit the chosen destination, or when there's no date window everyone shares.
-
-## User journey
-
-The journey runs in three phases: plan, travel and settle.
-
-**Before the trip**
-
-1. **Create and join.** The organiser creates the group. Members join with their home currency, nationality and departure airport.
-2. **Enter your private budget.** Each member privately enters their three budgets, available dates, trip style (beach, culture, hiking, nightlife) and dietary needs.
-3. **Shortlist.** The server returns 3 to 5 destinations labelled "fits everyone", each with an estimated cost per person and a short explanation of how it matches the group's tastes. Estimates come from sample data on what past groups spent there.
-4. **Anonymous vote.** Members approve or reject each option. Only the totals are shown, never who voted for what.
-5. **Flights.** Each member sees flight options from their own airport, with a link to Google Flights.
-6. **Stay.** The server searches stays, keeps only those safely under the ceiling, ranks them by rating (not price), and shows 3 to 5 options in different areas. The group votes anonymously, and the winner gets prefilled Booking.com and Airbnb links.
-7. **Two-track itinerary.** Gemini drafts each day around the stay's location: a core plan inside the group budget, plus optional extras with a per-person price. Members privately tap "I'm in" or "Pass" on extras. The group sees who's going, but never why someone passed, and anyone not joining gets a cheap or free alternative for that time slot.
-8. **Entry requirements.** Each member gets a link to the official entry-requirements page for their nationality.
-
-**During the trip**
-
-9. **Log expenses.** Snap a receipt and Gemini reads the amount, currency and category. The payer marks it as shared (split among participants), extra (split only among people who opted in) or personal (visible only to them). The exchange rate at that moment is saved with it.
-10. **Evening nudge.** Each evening: "Did you pay for anything today?" with a one-tap quick add. Any member can tap "something's missing" to prompt the payer.
-11. **Private pacing.** Each member sees a line only they can see, for example "You're €18 under your daily pace." Pacing is computed from their private budget and spending so far.
-
-**After the trip**
-
-12. **Settle up.** The app works out who owes whom with the fewest payments, converts each amount to the payer's home currency at the saved rates, and links to pay with Wise.
-13. **Trip Wrapped.** The group gets a shareable recap of the trip, with group totals only.
+**Also:** accounts with passwords, friends and friend requests, and an Insights tab showing spending by city and month.
 
 ## Privacy rules
 
-No member's budget, ceiling or limiting constraint ever leaves the server.
+No member's budget, the ceiling, or who is limiting the group ever leaves the server.
 
-- Budgets are stored with row-level security, so a user can only read their own row.
-- The ceiling is computed in one server function and never returned to any client.
-- Shortlists show a spread of options well under the ceiling. They're never sorted by price from highest to lowest and never labelled "at the limit".
-- Private-first prompts go to every member at the same moment, so receiving one reveals nothing.
-- Passing on an extra shows no reason. Votes show totals only.
-- Gemini receives filtered shortlists and preference tags only, never any budget.
-- Trip Wrapped and group views show group totals only.
-- When a member leaves, their private data is deleted and the ceiling is recomputed.
-- Known limit: in a two-person group, budgets can be roughly inferred. Both members are warned before they start.
+- Every private query is filtered by the logged-in user, and responses are built from explicit field lists. Hiding fields in the UI isn't privacy.
+- The ceiling and the "who blocks what" diagnostics stay inside the shortlist function (`code/backend/shortlist.js`, `code/backend/logic/feasibility.js`).
+- Votes return totals only. Personal expenses are only returned to the person who paid.
+- **AI never sees a budget.** Gemini receives receipt images, transcripts and member names only. Snowflake Cortex receives destination tags, trip styles, nights and month only, and any reply that mentions money is thrown away. `code/backend/gemini.js` deliberately doesn't import the database.
+- Snowflake only holds anonymised data: hashed trip ids, no names, no budgets, no personal spending, and no trips with fewer than 3 people.
+- Leaving a trip deletes your budget and dates and recomputes the shortlist for everyone else.
 
-## Data, integrations and AI
+## How it's built
 
-All budget maths is deterministic server code. AI is used only for reading receipts and writing text, and never sees a budget.
+```
+React (code/frontend)
+   │  JWT on every request
+   ▼
+Express API (code/backend)
+   ├── *.js            routes: trips, budgets, booking, expenses, friends, notifications, insights
+   ├── logic/          pure functions, unit-tested: dates, ceiling, feasibility, fx, expenses, flights, analytics, explain
+   └── integrations/   Wise, SerpApi flights, ElevenLabs, Snowflake (+ gemini.js), each with a fallback
+   │
+   ▼
+PostgreSQL (Tiger Data–ready)        Snowflake (anonymised analytics + Streamlit dashboard)
+```
 
-| Component | Source | Type |
+| Part | What we use | If it fails |
 | --- | --- | --- |
-| Feasibility, ceiling, date overlap, pacing, settlement | Own server code | Deterministic |
-| Expenses, daily spend, past-group sample data | Tiger Data (PostgreSQL) | Database, time-series |
-| Flights, hotels, rentals | SerpApi | External search, scraping-based (licensed APIs in production) |
-| Restaurants and attractions | Google Places | External |
-| Weather for re-planning | Weather API (e.g. Open-Meteo) | External |
-| Exchange rates | Wise API | External, with a labelled fallback |
-| Receipt reading, spoken-expense parsing, explanations, itineraries | Gemini API | AI, receives no budget data |
-| Re-planning agent | Gemini with our own tools | AI, sees only "fits" / "doesn't fit" |
-| Voice input and spoken check-ins | ElevenLabs speech-to-text and text-to-speech | AI, receives no budget data |
-| Booking links, Wise payment links | Own code | Deterministic |
-| Hosting | Vultr | Cloud |
+| Budget maths: ceiling, feasibility, dates, pacing, splits, settle-up | Our own code in `code/backend/logic/` | Deterministic, no fallback needed |
+| Database | PostgreSQL. `code/backend/db/timescale.sql` adds a Tiger Data hypertable and continuous aggregate | — |
+| Exchange rates | Wise API (sandbox) | Fallback rates, labelled in the UI |
+| Flight prices | SerpApi Google Flights, cached for 12 hours | Sample flight estimates from the database |
+| Receipt and voice parsing | Gemini (`gemini-3.8-flash`, falls back to `gemini-3.5-flash-lite` when busy) | Manual entry form |
+| Speech-to-text and read-back | ElevenLabs `scribe_v2` and `eleven_v4_turbo` | Typed entry; no audio |
+| Destination insights | Snowflake (`npm run snowflake:sync`), dashboard in `code/snowflake/streamlit_app.py` | Same calculation in Postgres |
+| "Why this fits" reasons | Snowflake Cortex | Template reason. Cortex isn't available on trial accounts, so the demo uses the template. |
 
-**Sample data.** Past-group spending is seeded dummy data stored in Tiger Data. It's labelled "sample data" in the demo and pitched as real history in production. Continuous aggregates turn it into figures like "groups of 4 spent about €65 per person per day in Lisbon".
+More detail: [docs/system_design.md](docs/system_design.md) and [docs/api_contract.md](docs/api_contract.md).
 
-## Tracks and side challenges
+## Running it
 
-We enter the Wise track as our one main track, plus every side challenge the product can win without a detour. Each side challenge must appear naturally inside the 3-minute demo, not as a bolt-on. [Event page](https://iku-womxn-in-stem-hackathon.devpost.com/)
+You need Node 18.11+ (20+ recommended) and a PostgreSQL database.
 
-| Challenge | Prize | How the product qualifies | Extra effort | Priority |
-| --- | --- | --- | --- | --- |
-| Wise: Max Ease (main track) | Merch, trophy, fast-track intern/grad interview (1st–3rd) | The whole product | — | Must |
-| incident.io: Adaptable Agents | Lego sets | A planning agent that re-plans when circumstances change (see below) | Medium | High |
-| ElevenLabs: Best Project Built with ElevenLabs | 3 months Scale tier per member | Voice expense logging in any language, and spoken evening check-ins in each member's language | Medium | High |
-| MLH: Best Use of Gemini API | MLH swag kits | Receipt reading, parsing spoken expenses, itineraries, the agent's reasoning | Low | High |
-| MLH: Best Use of Tiger Data | Stream Deck Mini | Expenses as time-series, pacing from continuous aggregates, past-group averages | Low | High |
-| MLH: Best Use of Vultr | M5Stack Tab5 | Host the app on Vultr | Low | Medium |
-| MLH: Best Domain Name (GoDaddy Registry) | Digital gift card | Register a domain once we pick a name | Very low | Medium |
-| Best Beginner Hack | Label printers | Only if most of the team comes from a non-CS-adjacent background | None | Check eligibility |
-| DEV Writing Challenge (MLH page) | $100 | Write up the build on DEV after the event | Low, after event | Later |
+```bash
+npm run setup      # installs packages, creates code/backend/.env from .env.example
+# fill in DATABASE_URL (and any API keys) in code/backend/.env
+npm run db:reset   # creates the tables and loads the sample data
+npm run dev        # backend on :8080, frontend on :3000
+```
 
-**Skipped:** the Society track (only one main track allowed), Hackiest Hack (it rewards over-engineering, which works against Wise's 30% on execution), and Solana, Presage and Snowflake (forced fits).
+Demo users are `tom` (London, GBP), `amara` (Lagos, NGN) and `lucia` (Madrid, EUR). All the API keys are optional: without one, that feature uses its fallback.
 
-**The adaptive agent (incident.io).** A Gemini agent with tools for flights, stays, weather and a feasibility check. It never sees a budget: the feasibility tool only answers "fits everyone" or "doesn't". It reacts to new evidence and explains what it changed and why:
+Other commands: `npm run snowflake:sync`, `npm run flights:refresh`, and `npm --prefix code/backend test` for the unit tests.
 
-- A member updates their budget or dates → it reruns the shortlist and runs the private-first flow if nothing fits.
-- A flight price jumps or a stay sells out → it swaps in the next option that fits everyone.
-- Rain is forecast for a beach day → it moves that day's core plan indoors and keeps the extras.
-- A member drops out → it recomputes the ceiling and the expense splits.
-
-**Voice (ElevenLabs).** A member says "I paid 42 euros for dinner for all four of us" in any language. ElevenLabs speech-to-text transcribes it, Gemini turns it into a shared expense, and the member confirms with one tap. The evening check-in can also be spoken aloud in each member's language, which supports Wise's "inclusive accessibility" direction.
-
-## Scope
-
-The demo has to show the sealed-envelope moment working end to end. Everything else is supporting material.
-
-**Must build (the demo)**
-
-- Private budgets, date overlap, ceiling and private stretch consent
-- Destination shortlist from sample data, with anonymous voting
-- Private-first resolution when nothing fits
-- Receipt scanning and voice logging, shared/extra/personal expenses, multi-currency with live Wise rates
-- Evening nudge with a "simulate next day" button, plus private pacing
-- Settle-up in home currencies with Wise links
-
-**Should build (if time allows, in this order)**
-
-1. Re-planning agent for the incident.io challenge (one scenario working well beats four half-working)
-2. Two-track itinerary with optional extras (Gemini)
-3. Stay search and voting (SerpApi), with Booking.com and Airbnb links
-4. Live flight estimates, then Trip Wrapped
-
-**Simplified**
-
-- Entry requirements: links to official pages only
-- Restaurants: only inside the itinerary, filtered by diet, not a separate feature
-
-**Roadmap (pitch only)**
-
-- Anonymous treats
-- Direct booking through partner APIs
-- Real past-group history replacing sample data
-- In-app payments
-
-**Cut**
-
-- Flight cost pooling: rare among friends, and it adds pressure the app is meant to remove
-- Built-in visa rules: no reliable free source, and wrong answers are risky
-- A standalone "hidden gems" or food feature: too similar to other planners
-
-## Success criteria and judging fit
-
-**Success criteria**
-
-- A group goes from "no plan" to an agreed destination, dates and stay without anyone stating a budget.
-- The evening nudge gets an expense logged in under 20 seconds.
-- Settlement needs no spreadsheet and no manual currency conversion.
-- No member's budget can be read or inferred from anything shown, in groups of 3 or more.
-
-**Wise rubric.** Each category is scored 1 to 4. Final score = 0.3 × Friction + 0.3 × Technical + 0.3 × Presentation + 0.1 × AI transparency. Presentation counts as much as the code, so rehearse the demo as seriously as you build.
-
-| Category (weight) | What a 4 needs | How we get there |
-| --- | --- | --- |
-| Friction removal and utility (30%) | Removes complex friction entirely; feels effortless and accessible to all | No budget conversation, no scheduling back-and-forth, one-tap or spoken expense logging, no manual currency maths, voice in any language |
-| Technical and architectural execution (30%) | Production-ready, high performance, elegant error handling, robust tech choices | Live Wise, Gemini and ElevenLabs calls; deterministic budget maths on the server; row-level security; every fallback labelled with source and time |
-| Presentation and pitching (30%) | Compelling pitch, flawless live demo, strong Q&A | Live demo of the main journey, not slides; rehearsed to fit 3 minutes; Q&A answers prepared below |
-| AI usage and transparency (10%) | Explicitly states where AI was used versus original work | A full disclosure table on a slide and in the README (see AI disclosure) |
-
-**Avoid the score-2 trap.** The rubric marks down demos that "rely on heavy hardcoded shortcuts". Keep seeded past-group data in the real database behind real queries, label it as sample data, and use cached flight prices only as a labelled fallback when the live call fails.
-
-**Demo script (3 minutes).** Use three users in London, Lagos and Madrid with very different budgets. Show that each person sees only their own budget, then reveal the shortlist that fits all three. Pass on an extra to show the two-track day, scan a receipt, then settle in GBP, NGN and EUR.
-
-## Q&A to prepare
-
-| Question | Answer |
-| --- | --- |
-| Why not book inside the app? | Booking.com's API needs a partner agreement and Airbnb has no public booking API. We hand off to their sites and keep direct booking on the roadmap. |
-| Can people infer each other's budgets? | Not from anything displayed in groups of 3 or more. In groups of 2 it's possible, and we warn both people up front. |
-| Doesn't the lowest budget control the trip? | It controls only the shared core. Extras let others spend more without pressure, and stretch consent lets the lowest budget choose to go slightly higher. |
-| What if a provider goes down? | The app falls back to cached data or deep links and always labels the source and time. |
-| Where does the past-trip data come from? | It's seeded sample data for the demo, labelled as such. In production it would come from real anonymised trips. |
-| Does the AI see budgets? | No. Gemini receives only filtered options and preference tags. |
-| How would Wise make money? | Group trips create repeated cross-border settlements, and the app could live inside the Wise app as a group feature. |
+**Sample data.** Destinations, reference prices and past-group spending are seeded sample data in real tables, read through real queries, and labelled "sample" where they're shown. Destination photos are from Wikimedia Commons: see `code/frontend/public/images/destinations/CREDITS.md`.
 
 ## AI disclosure
 
-This table goes on a pitch slide and in the README. A 4 needs every AI-assisted part named and separated from the team's own work.
+We used AI in two ways: as a **feature inside the app** at runtime, and as a **coding and writing assistant** while we built it. Everything else is our own work.
 
-| Part | AI involved | What the team did |
+### AI inside the app
+
+| Feature | AI used | What we built ourselves |
 | --- | --- | --- |
-| Product idea, problem and budget logic | None | Original team idea |
-| Planning and this product description | Claude helped structure and draft | Team decided scope, features and rules |
-| Feasibility, ceiling, pacing, settlement code | List coding assistants used, if any | Team designed and wrote the logic |
-| Frontend and backend code | List tools used (e.g. Copilot, Claude) and which files | Team reviewed, tested and integrated |
-| Receipt reading, voice parsing, itineraries, re-planning agent | Gemini API, at runtime | Team wrote the prompts, tools and guardrails |
-| Speech-to-text and spoken check-ins | ElevenLabs, at runtime | Team built the flow and confirmation step |
-| Sample past-group data | Fill in: generated by script or AI | Team defined the schema and checked values |
+| Receipt reading: total, currency, merchant, category and item lines | Gemini API | The prompt, the JSON schema, validation, conversion to minor units in code (not by the model), the fallback model, and the manual-entry fallback |
+| Spoken expenses: transcript to draft expense with items and people | ElevenLabs speech-to-text, then Gemini | The prompt, matching names to user ids in code, and the confirm step. Nothing is saved until the user confirms. |
+| Spoken confirmation after saving | ElevenLabs text-to-speech | The confirmation sentence is built by our code from the saved split |
+| "Why this fits" reasons | Snowflake Cortex (falls back to our template on trial accounts) | The money-free prompt input and the filter that rejects replies mentioning money |
 
-Keep a running note during the event of which files or features had AI help, so the table is accurate at the end.
+AI never decides anything about money. Every budget check, split, conversion and settlement is deterministic code with unit tests.
 
-## Submission checklist
+### AI as a development tool
 
-Draft deadline: Saturday 17 October, 23:00, with the main track and side challenges selected. Final deadline: Sunday 18 October, 12:15 BST. [Event page](https://iku-womxn-in-stem-hackathon.devpost.com/)
+| Area | AI tool | How we used it | What we did ourselves |
+| --- | --- | --- | --- |
+| Product idea, problem, privacy rules, budget logic design | None | — | Our own idea, refined with input from people at Wise |
+| Gemini receipt integration and per-item split | Claude Code | Helped write the Gemini call and schema, the proportional-split maths and the item editor | Designed the feature, tested it on real receipts, reviewed and debugged the code |
+| Voice entry and spoken read-back | Claude Code | Helped write the ElevenLabs calls, the transcript prompt and the browser recording | Chose the models and flow, tested it by voice |
+| Merging branches | Claude Code | Helped resolve merge conflicts | Reviewed every resolution and checked the app still ran |
+| Docs, README, Devpost text and pitch deck | Claude, Canva AI | Claude helped structure and edit the writing; Canva AI laid out the slides | Decided the content and every claim, reviewed everything |
 
-- [ ] Devpost draft started tonight, with Wise as the main track and all side challenges ticked
-- [ ] Name, description, how it was built, challenges, accomplishments, what's next
-- [ ] 2-minute demo video
-- [ ] Public GitHub repo with only code built during the event
-- [ ] All team members listed with valid emails
-- [ ] Domain registered with GoDaddy Registry
-- [ ] App deployed on Vultr
-- [ ] AI disclosure slide and README section
-- [ ] 3-minute live demo rehearsed, plus 2 minutes of Q&A
+Everything else, including the budget, ceiling and settle-up logic, the database, and the Wise, flights and Snowflake integrations, we wrote and tested ourselves.
+
+## What's next
+
+- A re-planning agent that reacts when a flight price jumps, a stay sells out or someone drops out
+- A screen to answer the private "stretch slightly above your number?" prompt (the logic already supports it)
+- Private-first resolution: a private prompt to every member at once before the group hears "nothing fits"
+- Two-track days: a shared core plan plus optional extras people join privately
+- Stay search and voting, with Booking.com and Airbnb links
+- Trip Wrapped: a shareable recap with group totals only
+- Hosting on Vultr with our own domain
