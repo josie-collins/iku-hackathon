@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { api, formatMoney } from './api';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { api, formatMoney, speakAloud } from './api';
 import { currencyLabel, currencyOptions } from './currencies';
 import { describeActivity, timeAgo } from './Notifications';
 import Avatar, { AvatarStack } from './Avatar';
@@ -175,6 +175,13 @@ async function photoToBase64(file) {
 
 const toMinor = (value) => Math.round(Number(value) * 100);
 
+const blobToBase64 = (blob) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result.split(',')[1]);
+  reader.onerror = reject;
+  reader.readAsDataURL(blob);
+});
+
 function ExpenseForm({ groupId, me, members, defaultCurrency, tripCurrencies, onCancel, onSaved }) {
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState(defaultCurrency);
@@ -190,6 +197,27 @@ function ExpenseForm({ groupId, me, members, defaultCurrency, tripCurrencies, on
   const [scanNote, setScanNote] = useState('');
   const byItem = items.length > 0 && type !== 'personal';
   const nameOf = (id) => (id === me ? 'You' : members.find((m) => m.user_id === id)?.name || 'Someone');
+
+  // Fill the form from a receipt or voice draft. Items without people (receipts)
+  // start with everyone ticked; voice drafts already say who had what.
+  const applyDraft = (draft) => {
+    const everyone = members.map((m) => m.user_id);
+    setAmount(String(draft.amount.amount_minor / 100));
+    setCurrency(draft.amount.currency);
+    if (draft.merchant) setDescription(draft.merchant);
+    setCategory(draft.category);
+    if (type === 'personal') setType('shared');
+    // One item covering the whole amount is just "who was it for", not a split by item.
+    const single = draft.items.length === 1 && draft.items[0].amount_minor === draft.amount.amount_minor;
+    const lines = single ? [] : draft.items;
+    setItems(lines.map((i) => ({
+      name: i.name,
+      price: String(i.amount_minor / 100),
+      picked: new Set(i.participant_ids || everyone),
+    })));
+    setPicked(new Set(draft.participant_ids || (single && draft.items[0].participant_ids) || everyone));
+    return lines.length;
+  };
 
   const scan = async (e) => {
     const file = e.target.files[0];
@@ -208,14 +236,7 @@ function ExpenseForm({ groupId, me, members, defaultCurrency, tripCurrencies, on
         setScanNote("Couldn't read that receipt. Fill it in below instead.");
         return;
       }
-      setAmount(String(draft.amount.amount_minor / 100));
-      setCurrency(draft.amount.currency);
-      if (draft.merchant) setDescription(draft.merchant);
-      setCategory(draft.category);
-      if (type === 'personal') setType('shared');
-      const everyone = members.map((m) => m.user_id);
-      setItems(draft.items.map((i) => ({ name: i.name, price: String(i.amount_minor / 100), picked: new Set(everyone) })));
-      setScanNote(draft.items.length
+      setScanNote(applyDraft(draft)
         ? 'Read by Gemini. Check the numbers, then tap who had each item.'
         : 'Read by Gemini. Check the numbers below.');
     } catch (err) {
@@ -223,6 +244,57 @@ function ExpenseForm({ groupId, me, members, defaultCurrency, tripCurrencies, on
     } finally {
       setScanning(false);
     }
+  };
+
+  // Voice: record, then ElevenLabs transcribes it and Gemini fills the form.
+  const [recording, setRecording] = useState(false);
+  const [viaVoice, setViaVoice] = useState(false); // spoken in, so the confirmation is spoken back
+  const recorder = useRef(null);
+  useEffect(() => () => recorder.current?.stream.getTracks().forEach((t) => t.stop()), []);
+
+  const sendVoice = async (blob) => {
+    setScanning(true);
+    try {
+      const base64 = await blobToBase64(blob);
+      const { transcript, draft } = await api(`/trips/${groupId}/parse-voice`, {
+        method: 'POST',
+        body: { audio_base64: base64, mime_type: blob.type },
+      });
+      if (!transcript) return setScanNote("Couldn't hear that. Try again, or fill it in below.");
+      if (!draft) return setScanNote(`Heard "${transcript}", but couldn't turn it into an expense. Fill it in below.`);
+      applyDraft(draft);
+      setViaVoice(true);
+      setScanNote(`Heard "${transcript}". Check it below.`);
+    } catch (err) {
+      setScanNote(err.message);
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const toggleRecording = async () => {
+    if (recording) return recorder.current.stop();
+    setScanNote('');
+    setError('');
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      return setScanNote('Allow microphone access to add an expense by voice.');
+    }
+    const rec = new MediaRecorder(stream);
+    const chunks = [];
+    rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    rec.onstop = () => {
+      clearTimeout(rec.limit);
+      stream.getTracks().forEach((t) => t.stop());
+      setRecording(false);
+      sendVoice(new Blob(chunks, { type: rec.mimeType }));
+    };
+    rec.limit = setTimeout(() => rec.state === 'recording' && rec.stop(), 30000); // keep notes short
+    recorder.current = rec;
+    rec.start();
+    setRecording(true);
   };
 
   const updateItem = (index, change) => setItems(items.map((item, i) => (i === index ? { ...item, ...change } : item)));
@@ -273,7 +345,7 @@ function ExpenseForm({ groupId, me, members, defaultCurrency, tripCurrencies, on
     setSaving(true);
     setError('');
     try {
-      await api(`/trips/${groupId}/expenses`, {
+      const saved = await api(`/trips/${groupId}/expenses`, {
         method: 'POST',
         body: {
           amount_minor: toMinor(value),
@@ -286,6 +358,7 @@ function ExpenseForm({ groupId, me, members, defaultCurrency, tripCurrencies, on
             : { participant_ids: type === 'personal' ? [me] : [...picked] }),
         },
       });
+      if (viaVoice && saved.confirmation) speakAloud(groupId, saved.confirmation); // plays on after the form closes
       onSaved();
     } catch (err) {
       setError(err.message);
@@ -296,10 +369,17 @@ function ExpenseForm({ groupId, me, members, defaultCurrency, tripCurrencies, on
   return (
     <form className="card stack" onSubmit={submit}>
       <h3 className="card-title">What did you pay for?</h3>
-      <label className={`scan-button ${scanning ? 'busy' : ''}`}>
-        <input type="file" accept="image/*" capture="environment" onChange={scan} disabled={scanning} hidden />
-        <span>{scanning ? 'Reading the receipt…' : '📷 Scan a receipt'}</span>
-      </label>
+      <div className="capture">
+        <label className={`scan-button ${scanning || recording ? 'busy' : ''}`}>
+          <input type="file" accept="image/*" capture="environment" onChange={scan} disabled={scanning || recording} hidden />
+          <span>{scanning ? 'Reading…' : '📷 Scan a receipt'}</span>
+        </label>
+        <button type="button" className={`scan-button ${recording ? 'recording' : ''}`} onClick={toggleRecording}
+          disabled={scanning} aria-pressed={recording}>
+          {recording ? '■ Stop' : '🎤 Say it'}
+        </button>
+      </div>
+      {recording && <p className="muted small">Listening… e.g. "Dinner, 42 euros. Amara and I had pasta for 12 each, the wine was for everyone."</p>}
       {scanNote && <p className="muted small">{scanNote}</p>}
       <div className="row">
         <label>
