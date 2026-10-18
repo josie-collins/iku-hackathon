@@ -1,4 +1,4 @@
-# Budget Group Trip Planner
+# Wise Piggy
 
 **Transparent costs, private budgets.** A group trip planner where nobody has to say their budget out loud.
 
