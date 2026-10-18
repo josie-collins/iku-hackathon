@@ -14,6 +14,44 @@ function splitEvenly(totalMinor, userIds) {
 }
 
 /**
+ * Split an amount in proportion to weights (e.g. each person's receipt items).
+ * Leftover minor units go to the largest remainders, then to the first listed,
+ * so the shares always add up exactly. People with weight 0 are left out.
+ * @param {Array<{userId: string, weight: number}>} weights
+ * @returns {Array<{userId: string, shareMinor: number}>}
+ */
+function splitByWeights(totalMinor, weights) {
+  const people = weights.filter((w) => w.weight > 0);
+  const sum = people.reduce((s, w) => s + w.weight, 0);
+  if (!sum) throw new Error('Nobody to split between');
+  const exact = people.map((w, i) => ({ i, userId: w.userId, raw: (totalMinor * w.weight) / sum }));
+  const shares = exact.map((e) => ({ userId: e.userId, shareMinor: Math.floor(e.raw) }));
+  let leftover = totalMinor - shares.reduce((s, x) => s + x.shareMinor, 0);
+  const order = [...exact].sort((a, b) => (b.raw % 1) - (a.raw % 1) || a.i - b.i);
+  for (const e of order) {
+    if (!leftover) break;
+    shares[e.i].shareMinor += 1;
+    leftover -= 1;
+  }
+  return shares;
+}
+
+/**
+ * Receipt items -> each person's weight. An item shared by several people is
+ * split evenly between them.
+ * @param {Array<{amountMinor: number, userIds: string[]}>} items
+ * @param {string[]} order  everyone's ids, so the result keeps a stable order
+ * @returns {Array<{userId: string, weight: number}>}
+ */
+function weightsFromItems(items, order) {
+  const totals = Object.fromEntries(order.map((id) => [id, 0]));
+  for (const item of items) {
+    for (const s of splitEvenly(item.amountMinor, item.userIds)) totals[s.userId] += s.shareMinor;
+  }
+  return order.map((userId) => ({ userId, weight: totals[userId] }));
+}
+
+/**
  * What each person is owed (positive) or owes (negative), in the base currency.
  * @param {string[]} userIds  everyone in the trip, so people with no expenses show 0
  * @param {Array<{payerId: string, amountBaseMinor: number, participants: Array<{userId: string, shareBaseMinor: number}>}>} expenses
@@ -79,4 +117,4 @@ function pace({ dailyBudgetMinor, spentMinor, days }) {
   return { days, allowanceMinor, spentMinor, underMinor: allowanceMinor - spentMinor };
 }
 
-module.exports = { splitEvenly, computeBalances, settleUp, countsTowardsPace, pace };
+module.exports = { splitEvenly, splitByWeights, weightsFromItems, computeBalances, settleUp, countsTowardsPace, pace };

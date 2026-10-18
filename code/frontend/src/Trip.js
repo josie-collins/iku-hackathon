@@ -147,6 +147,36 @@ function Pace({ pace }) {
   );
 }
 
+// Phone photos are big: shrink to a JPEG before sending. If the browser can't
+// decode it (e.g. HEIC outside Safari), send the original file instead.
+const MAX_SIDE = 1600;
+async function photoToBase64(file) {
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = reject;
+      el.src = dataUrl;
+    });
+    const scale = Math.min(1, MAX_SIDE / Math.max(img.width, img.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.width * scale);
+    canvas.height = Math.round(img.height * scale);
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    return { base64: canvas.toDataURL('image/jpeg', 0.85).split(',')[1], mimeType: 'image/jpeg' };
+  } catch {
+    return { base64: dataUrl.split(',')[1], mimeType: file.type || 'image/jpeg' };
+  }
+}
+
+const toMinor = (value) => Math.round(Number(value) * 100);
+
 function ExpenseForm({ groupId, me, members, defaultCurrency, tripCurrencies, onCancel, onSaved }) {
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState(defaultCurrency);
@@ -156,6 +186,69 @@ function ExpenseForm({ groupId, me, members, defaultCurrency, tripCurrencies, on
   const [picked, setPicked] = useState(() => new Set(members.map((m) => m.user_id)));
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  // Receipt lines, each with the people it was for: [{ name, price, picked: Set }]
+  const [items, setItems] = useState([]);
+  const [scanning, setScanning] = useState(false);
+  const [scanNote, setScanNote] = useState('');
+  const byItem = items.length > 0 && type !== 'personal';
+  const nameOf = (id) => (id === me ? 'You' : members.find((m) => m.user_id === id)?.name || 'Someone');
+
+  const scan = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = ''; // so picking the same photo again still triggers a scan
+    if (!file) return;
+    setScanning(true);
+    setScanNote('');
+    setError('');
+    try {
+      const { base64, mimeType } = await photoToBase64(file);
+      const { draft } = await api(`/trips/${groupId}/parse-receipt`, {
+        method: 'POST',
+        body: { image_base64: base64, mime_type: mimeType },
+      });
+      if (!draft) {
+        setScanNote("Couldn't read that receipt. Fill it in below instead.");
+        return;
+      }
+      setAmount(String(draft.amount.amount_minor / 100));
+      setCurrency(draft.amount.currency);
+      if (draft.merchant) setDescription(draft.merchant);
+      setCategory(draft.category);
+      if (type === 'personal') setType('shared');
+      const everyone = members.map((m) => m.user_id);
+      setItems(draft.items.map((i) => ({ name: i.name, price: String(i.amount_minor / 100), picked: new Set(everyone) })));
+      setScanNote(draft.items.length
+        ? 'Read by Gemini. Check the numbers, then tap who had each item.'
+        : 'Read by Gemini. Check the numbers below.');
+    } catch (err) {
+      setScanNote(err.message);
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const updateItem = (index, change) => setItems(items.map((item, i) => (i === index ? { ...item, ...change } : item)));
+  const toggleItemPerson = (index, id) => {
+    const next = new Set(items[index].picked);
+    next.has(id) ? next.delete(id) : next.add(id);
+    updateItem(index, { picked: next });
+  };
+
+  // Preview of what each person pays: the total split in proportion to their items,
+  // the same way the server does it (tax, tip and rounding shared fairly).
+  const itemShares = () => {
+    const weights = Object.fromEntries(members.map((m) => [m.user_id, 0]));
+    for (const item of items) {
+      const price = Number(item.price) || 0;
+      for (const id of item.picked) weights[id] += price / item.picked.size;
+    }
+    const sum = Object.values(weights).reduce((s, w) => s + w, 0);
+    const total = Number(amount) || sum;
+    return members
+      .filter((m) => weights[m.user_id] > 0)
+      .map((m) => ({ id: m.user_id, minor: sum ? Math.round((total * weights[m.user_id]) / sum * 100) : 0 }));
+  };
+  const itemsTotal = items.reduce((s, i) => s + (Number(i.price) || 0), 0);
 
   const chooseType = (next) => {
     setType(next);
@@ -174,19 +267,25 @@ function ExpenseForm({ groupId, me, members, defaultCurrency, tripCurrencies, on
     e.preventDefault();
     const value = Number(amount);
     if (!amount || !Number.isFinite(value) || value <= 0) return setError('Enter an amount above 0.');
-    if (type !== 'personal' && !picked.size) return setError('Pick who this was for.');
+    if (byItem) {
+      if (items.some((i) => !Number.isFinite(Number(i.price)) || Number(i.price) < 0)) return setError('Every item needs a price.');
+      if (items.some((i) => !i.picked.size)) return setError('Pick who had each item.');
+      if (!items.some((i) => Number(i.price) > 0)) return setError('The items add up to nothing.');
+    } else if (type !== 'personal' && !picked.size) return setError('Pick who this was for.');
     setSaving(true);
     setError('');
     try {
       await api(`/trips/${groupId}/expenses`, {
         method: 'POST',
         body: {
-          amount_minor: Math.round(value * 100),
+          amount_minor: toMinor(value),
           currency,
           description,
           category,
           type,
-          participant_ids: type === 'personal' ? [me] : [...picked],
+          ...(byItem
+            ? { items: items.map((i) => ({ amount_minor: toMinor(i.price), participant_ids: [...i.picked] })) }
+            : { participant_ids: type === 'personal' ? [me] : [...picked] }),
         },
       });
       onSaved();
@@ -199,6 +298,11 @@ function ExpenseForm({ groupId, me, members, defaultCurrency, tripCurrencies, on
   return (
     <form className="card stack" onSubmit={submit}>
       <h3 className="card-title">What did you pay for?</h3>
+      <label className={`scan-button ${scanning ? 'busy' : ''}`}>
+        <input type="file" accept="image/*" capture="environment" onChange={scan} disabled={scanning} hidden />
+        <span>{scanning ? 'Reading the receipt…' : '📷 Scan a receipt'}</span>
+      </label>
+      {scanNote && <p className="muted small">{scanNote}</p>}
       <div className="row">
         <label>
           <span>Amount</span>
@@ -207,7 +311,7 @@ function ExpenseForm({ groupId, me, members, defaultCurrency, tripCurrencies, on
         <label>
           <span>Currency</span>
           <select value={currency} onChange={(e) => setCurrency(e.target.value)}>
-            {currencyOptions(tripCurrencies).map((code) => (
+            {currencyOptions([currency, ...tripCurrencies]).map((code) => (
               <option key={code} value={code}>{currencyLabel(code)}</option>
             ))}
           </select>
@@ -236,7 +340,7 @@ function ExpenseForm({ groupId, me, members, defaultCurrency, tripCurrencies, on
           ))}
         </div>
         <small className="muted">{TYPES.find((t) => t.key === type).hint}</small>
-        {type !== 'personal' &&
+        {type !== 'personal' && !byItem &&
           members.map((m) => (
             <label key={m.user_id} className="check">
               <input type="checkbox" checked={picked.has(m.user_id)} onChange={() => toggle(m.user_id)} />
@@ -244,6 +348,50 @@ function ExpenseForm({ groupId, me, members, defaultCurrency, tripCurrencies, on
             </label>
           ))}
       </fieldset>
+
+      {byItem && (
+        <fieldset className="items">
+          <legend>Split by item</legend>
+          <ul>
+            {items.map((item, i) => (
+              <li key={i}>
+                <div className="item-line">
+                  <input aria-label="Item" value={item.name} onChange={(e) => updateItem(i, { name: e.target.value })} />
+                  <input aria-label="Price" className="item-price" type="number" inputMode="decimal" min="0" step="0.01"
+                    value={item.price} onChange={(e) => updateItem(i, { price: e.target.value })} />
+                  <button type="button" className="item-remove" aria-label={`Remove ${item.name}`}
+                    onClick={() => setItems(items.filter((_, j) => j !== i))}>×</button>
+                </div>
+                <div className="chips">
+                  {members.map((m) => (
+                    <button type="button" key={m.user_id} aria-pressed={item.picked.has(m.user_id)}
+                      className={`chip ${item.picked.has(m.user_id) ? 'on' : ''}`}
+                      onClick={() => toggleItemPerson(i, m.user_id)}>
+                      {nameOf(m.user_id)}
+                    </button>
+                  ))}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <button type="button" className="link"
+            onClick={() => setItems([...items, { name: '', price: '', picked: new Set(members.map((m) => m.user_id)) }])}>
+            + Add an item
+          </button>
+          {Math.abs(itemsTotal - (Number(amount) || 0)) >= 0.01 && (
+            <p className="muted small">
+              Items add up to {formatMoney(toMinor(itemsTotal), currency)}. The total of {formatMoney(toMinor(amount || 0), currency)} (with
+              tax, tip or discounts) is split in the same proportions.
+            </p>
+          )}
+          <ul className="item-shares">
+            {itemShares().map((s) => (
+              <li key={s.id}><span>{nameOf(s.id)}</span><strong>{formatMoney(s.minor, currency)}</strong></li>
+            ))}
+          </ul>
+          <button type="button" className="link" onClick={() => setItems([])}>Split evenly instead</button>
+        </fieldset>
+      )}
 
       {error && <p className="error">{error}</p>}
       <div className="row">

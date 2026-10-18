@@ -1,8 +1,28 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { splitEvenly, computeBalances, settleUp, countsTowardsPace, pace } = require('../logic/expenses');
+const { splitEvenly, splitByWeights, weightsFromItems, computeBalances, settleUp, countsTowardsPace, pace } = require('../logic/expenses');
 
 const total = (shares) => shares.reduce((sum, s) => sum + s.shareMinor, 0);
+
+test('receipt items: each person pays for their own, shared items split evenly', () => {
+  const weights = weightsFromItems([
+    { amountMinor: 1200, userIds: ['a'] },
+    { amountMinor: 800, userIds: ['b'] },
+    { amountMinor: 1000, userIds: ['a', 'b'] }, // shared bottle of wine
+  ], ['a', 'b', 'c']);
+  assert.deepEqual(weights, [{ userId: 'a', weight: 1700 }, { userId: 'b', weight: 1300 }, { userId: 'c', weight: 0 }]);
+  // Same currency, items add up to the total: shares are the item totals, c is left out
+  assert.deepEqual(splitByWeights(3000, weights), [{ userId: 'a', shareMinor: 1700 }, { userId: 'b', shareMinor: 1300 }]);
+});
+
+test('weighted split scales to a different total (tax, tip, currency) and adds up exactly', () => {
+  const weights = [{ userId: 'a', weight: 1 }, { userId: 'b', weight: 1 }, { userId: 'c', weight: 1 }];
+  assert.deepEqual(splitByWeights(1000, weights).map((s) => s.shareMinor), [334, 333, 333]);
+  for (const amount of [1, 99, 8372, 123457]) {
+    assert.equal(total(splitByWeights(amount, [{ userId: 'a', weight: 317 }, { userId: 'b', weight: 1250 }])), amount);
+  }
+  assert.throws(() => splitByWeights(100, [{ userId: 'a', weight: 0 }]));
+});
 
 test('even split hands the leftover cents to the first people', () => {
   const shares = splitEvenly(1000, ['a', 'b', 'c']);
