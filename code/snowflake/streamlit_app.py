@@ -18,23 +18,37 @@ st.set_page_config(page_title="Trip spending insights", layout="wide")
 # Validated categorical slots (blue, orange): pass CVD and contrast checks on a light surface.
 BLUE = "#2a78d6"
 ORANGE = "#eb6834"
+AQUA = "#1baf7a"  # below 3:1 on light: the split is also in the table view
+CONTEXT_GREY = "#c3c2b7"  # non-highlighted bars when one month is the point
+MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 GRID = "#e6e5e1"
 TEXT_MUTED = "#52514e"
 
 session = get_active_session()
 
+# Full names, so the app finds the tables wherever it was created (a workspace, a
+# different schema) and whatever its session's current schema is.
+SCHEMA = "TRIP_PLANNER.ANALYTICS"
+
 
 @st.cache_data(ttl=600)
 def load():
     trips = session.sql(
-        "SELECT TRIP_KEY, DESTINATION_CITY, COUNTRY_CODE, STATUS, GROUP_SIZE, NIGHTS, TRIP_MONTH FROM TRIPS"
+        f"SELECT TRIP_KEY, DESTINATION_CITY, COUNTRY_CODE, STATUS, GROUP_SIZE, NIGHTS, TRIP_MONTH FROM {SCHEMA}.TRIPS"
     ).to_pandas()
     spend = session.sql(
-        """SELECT TRIP_KEY, DESTINATION_CITY, SPENT_ON, CATEGORY, GROUP_SIZE,
-                  TOTAL_EUR_MINOR, PER_PERSON_EUR_MINOR, IS_SAMPLE, SYNCED_AT
-           FROM DAILY_SPEND"""
+        f"""SELECT TRIP_KEY, DESTINATION_CITY, SPENT_ON, CATEGORY, GROUP_SIZE,
+                   TOTAL_EUR_MINOR, PER_PERSON_EUR_MINOR, IS_SAMPLE, SYNCED_AT
+            FROM {SCHEMA}.DAILY_SPEND"""
     ).to_pandas()
-    return trips, spend
+    try:
+        places = session.sql(
+            f"""SELECT CITY, COUNTRY_CODE, STAY_PP_NIGHT_EUR_MINOR, FOOD_PP_DAY_EUR_MINOR, ACTIVITIES_PP_DAY_EUR_MINOR
+                FROM {SCHEMA}.DESTINATIONS"""
+        ).to_pandas()
+    except Exception:  # synced before DESTINATIONS existed: run the sync again
+        places = pd.DataFrame()
+    return trips, spend, places
 
 
 def euros(minor):
@@ -51,7 +65,7 @@ def style(chart):
     )
 
 
-trips, spend = load()
+trips, spend, places = load()
 
 st.title("Trip spending insights")
 st.caption(
@@ -195,6 +209,100 @@ with right:
         )
         st.altair_chart(style(chart), use_container_width=True)
 
+# ---- A typical day per destination: stay, food, activities --------------------------
+split = pd.DataFrame()
+if not places.empty:
+    st.subheader("A typical day per destination")
+    st.caption("Reference costs per person: one night's stay, a day's food and a day's activities. Sample data.")
+    split = places[places["CITY"].isin(chosen)].melt(
+        id_vars=["CITY"],
+        value_vars=["STAY_PP_NIGHT_EUR_MINOR", "FOOD_PP_DAY_EUR_MINOR", "ACTIVITIES_PP_DAY_EUR_MINOR"],
+        var_name="PART", value_name="MINOR",
+    )
+    split["PART"] = split["PART"].map({
+        "STAY_PP_NIGHT_EUR_MINOR": "Stay", "FOOD_PP_DAY_EUR_MINOR": "Food", "ACTIVITIES_PP_DAY_EUR_MINOR": "Activities",
+    })
+    split["EUR"] = split["MINOR"] / 100
+    order = split.groupby("CITY")["EUR"].sum().sort_values(ascending=False).index.tolist()
+    parts = ["Stay", "Food", "Activities"]
+    chart = (
+        alt.Chart(split)
+        .mark_bar(stroke="white", strokeWidth=2, height={"band": 0.7})
+        .encode(
+            y=alt.Y("CITY:N", sort=order, title=None),
+            x=alt.X("EUR:Q", title="EUR per person per day", stack="zero", axis=alt.Axis(format="€,.0f")),
+            color=alt.Color("PART:N", title=None, sort=parts, scale=alt.Scale(domain=parts, range=[BLUE, ORANGE, AQUA])),
+            order=alt.Order("PART_ORDER:Q"),
+            tooltip=[
+                alt.Tooltip("CITY:N", title="City"),
+                alt.Tooltip("PART:N", title="Part"),
+                alt.Tooltip("EUR:Q", title="Per person", format="€,.2f"),
+            ],
+        )
+        .transform_calculate(PART_ORDER="indexof(['Stay','Food','Activities'], datum.PART)")
+        .properties(height=max(240, 30 * len(order)))
+    )
+    st.altair_chart(style(chart), use_container_width=True)
+
+# ---- Cheapest month to go ---------------------------------------------------------------
+days["MONTH"] = pd.to_datetime(days["SPENT_ON"]).dt.month
+monthly = days.groupby(["DESTINATION_CITY", "MONTH"], as_index=False)["PER_PERSON"].mean()
+months_per_city = monthly.groupby("DESTINATION_CITY")["MONTH"].nunique()
+comparable = sorted(months_per_city[months_per_city >= 3].index)
+
+st.subheader("Cheapest month to go")
+if not include_sample:
+    st.caption("Mostly sample data: turn sample data back on to compare months.")
+if not comparable:
+    st.info("Not enough data yet: a city needs at least 3 months of spending to compare months.")
+else:
+    st.caption(
+        "Average spend per person per day in each month. The year of sample data uses a made-up seasonal "
+        "pattern for the demo, so treat it as illustrative, not as real prices."
+    )
+    city = st.selectbox("Destination", comparable)
+    one = monthly[monthly["DESTINATION_CITY"] == city].copy()
+    one["EUR"] = one["PER_PERSON"] / 100
+    one["MONTH_NAME"] = one["MONTH"].map(lambda m: MONTHS[m - 1])
+    cheapest = one.loc[one["EUR"].idxmin()]
+    one["IS_CHEAPEST"] = one["MONTH"] == cheapest["MONTH"]
+    saving = 1 - cheapest["EUR"] / one["EUR"].mean()
+
+    m1, m2 = st.columns(2)
+    m1.metric(f"Cheapest month in {city}", cheapest["MONTH_NAME"], help="Lowest average spend per person per day")
+    m2.metric("Compared with the yearly average", f"€{cheapest['EUR']:,.2f} a day", f"{saving:.0%} cheaper", delta_color="off")
+
+    chart = (
+        alt.Chart(one)
+        .mark_bar(cornerRadiusEnd=4, width={"band": 0.7})
+        .encode(
+            x=alt.X("MONTH_NAME:N", sort=MONTHS, title=None, axis=alt.Axis(labelAngle=0)),
+            y=alt.Y("EUR:Q", title="EUR per person per day", axis=alt.Axis(format="€,.0f")),
+            # Emphasis: the cheapest month in blue, the rest as grey context
+            color=alt.condition(alt.datum.IS_CHEAPEST, alt.value(BLUE), alt.value(CONTEXT_GREY)),
+            tooltip=[
+                alt.Tooltip("MONTH_NAME:N", title="Month"),
+                alt.Tooltip("EUR:Q", title="Per person per day", format="€,.2f"),
+            ],
+        )
+        .properties(height=280)
+    )
+    st.altair_chart(style(chart), use_container_width=True)
+
+    best = (
+        monthly[monthly["DESTINATION_CITY"].isin(comparable)]
+        .sort_values("PER_PERSON")
+        .groupby("DESTINATION_CITY", as_index=False)
+        .first()
+    )
+    best["Cheapest month"] = best["MONTH"].map(lambda m: MONTHS[m - 1])
+    best["Per person per day"] = best["PER_PERSON"].map(euros)
+    st.write("**Cheapest month for every destination**")
+    st.dataframe(
+        best[["DESTINATION_CITY", "Cheapest month", "Per person per day"]].rename(columns={"DESTINATION_CITY": "City"}),
+        hide_index=True,
+    )
+
 # ---- Table views (every chart's numbers, for screen readers and checking) -----------
 with st.expander("See the numbers as tables"):
     st.write("**Per person per day, by city**")
@@ -210,6 +318,16 @@ with st.expander("See the numbers as tables"):
         [["CATEGORY", "Per person per day"]].rename(columns={"CATEGORY": "Category"}),
         hide_index=True,
     )
+    if not split.empty:
+        st.write("**A typical day per destination**")
+        st.dataframe(
+            split.pivot_table(index="CITY", columns="PART", values="EUR")
+            .reindex(columns=["Stay", "Food", "Activities"])
+            .apply(lambda col: col.map(lambda v: f"€{v:,.2f}"))  # works on older pandas too
+            .reset_index()
+            .rename(columns={"CITY": "City"}),
+            hide_index=True,
+        )
     st.write("**Trips**")
     st.dataframe(
         real_trips[["DESTINATION_CITY", "COUNTRY_CODE", "STATUS", "GROUP_SIZE", "NIGHTS", "TRIP_MONTH"]]

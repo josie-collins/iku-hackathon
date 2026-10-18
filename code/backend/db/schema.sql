@@ -35,6 +35,7 @@ DROP TABLE IF EXISTS resolution_prompts     CASCADE;
 DROP TABLE IF EXISTS resolution_rounds      CASCADE;
 DROP TABLE IF EXISTS votes                  CASCADE;
 DROP TABLE IF EXISTS destination_options    CASCADE;
+DROP TABLE IF EXISTS flight_quotes          CASCADE;
 DROP TABLE IF EXISTS flight_estimates       CASCADE;
 DROP TABLE IF EXISTS availability           CASCADE;
 DROP TABLE IF EXISTS budgets                CASCADE;
@@ -94,6 +95,7 @@ CREATE TABLE destinations (
   food_pp_day_minor            bigint  NOT NULL CHECK (food_pp_day_minor >= 0),
   activities_pp_day_minor      bigint  NOT NULL CHECK (activities_pp_day_minor >= 0),
   source                       text    NOT NULL DEFAULT 'sample',
+  airport                      char(3),         -- IATA code for flight searches (NULL for day-hike spots)
   image_url                    text,            -- photo from Wikimedia Commons
   image_credit_url             text,            -- its Commons file page (author and licence)
   updated_at                   timestamptz NOT NULL DEFAULT now(),
@@ -192,6 +194,27 @@ CREATE TABLE flight_estimates (
   google_flights_url text,
   fetched_at     timestamptz NOT NULL DEFAULT now(),
   UNIQUE (origin, destination_id)
+);
+
+-- ----------------------------------------------------------------------------
+-- Live round-trip prices from SerpApi (Google Flights), per route AND dates.
+-- flight_estimates above stay as the date-less sample/fallback used for screening.
+-- price_minor is the round-trip price per person in `currency`.
+-- ----------------------------------------------------------------------------
+CREATE TABLE flight_quotes (
+  id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  origin             char(3) NOT NULL,
+  destination_id     uuid    NOT NULL REFERENCES destinations(id) ON DELETE CASCADE,
+  outbound_date      date    NOT NULL,
+  return_date        date    NOT NULL,
+  price_minor        bigint  NOT NULL CHECK (price_minor >= 0),
+  currency           char(3) NOT NULL,
+  airline            text,
+  stops              int,
+  google_flights_url text,
+  source             text    NOT NULL DEFAULT 'serpapi' CHECK (source IN ('serpapi')),
+  fetched_at         timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (origin, destination_id, outbound_date, return_date, currency)
 );
 
 -- ----------------------------------------------------------------------------

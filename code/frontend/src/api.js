@@ -36,5 +36,5 @@ export async function speakAloud(groupId, text) {
 
 // Money from the API is in minor units (cents, pence, kobo). Postgres bigints arrive as strings.
 export function formatMoney(minor, currency) {
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(Number(minor) / 100);
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency, currencyDisplay: 'narrowSymbol' }).format(Number(minor) / 100);
 }

@@ -8,7 +8,7 @@ const db = require('./db');
 const snowflake = require('./integrations/snowflake');
 const { getRates } = require('./integrations/wise');
 const { convertMinor } = require('./logic/fx');
-const { buildTripRows, buildDailySpendRows, averageDailySpend } = require('./logic/analytics');
+const { buildTripRows, buildDailySpendRows, averageDailySpend, averageDailySpendByMonth } = require('./logic/analytics');
 
 const CACHE_MS = 60 * 60 * 1000; // one hour
 const FALLBACK_CACHE_MS = 5 * 60 * 1000; // retry Snowflake sooner after a failure
@@ -35,7 +35,15 @@ async function loadAnalyticsRows() {
             s.per_person_minor, s.currency
      FROM sample_trip_spend s JOIN destinations d ON d.id = s.destination_id`);
 
-  const { rates } = await getRates('EUR', [...trips.map((t) => t.base_currency), ...sample.map((s) => s.currency)]);
+  // Reference costs per city (sample data, nothing private): for the spend split.
+  const { rows: places } = await db.query(
+    `SELECT city, country_code, tags, base_currency,
+            accommodation_pp_night_minor, food_pp_day_minor, activities_pp_day_minor
+     FROM destinations ORDER BY city`);
+
+  const { rates } = await getRates('EUR', [
+    ...trips.map((t) => t.base_currency), ...sample.map((s) => s.currency), ...places.map((p) => p.base_currency),
+  ]);
   const s = salt();
   const allowed = new Map(trips.map((t) => [t.id, t]));
   const sampleRows = sample.map((r) => {
@@ -52,20 +60,47 @@ async function loadAnalyticsRows() {
     };
   });
 
+  const toEur = (minor, currency) => convertMinor(Number(minor), currency, 'EUR', rates);
   return {
+    destinations: places.map((p) => ({
+      city: p.city,
+      country_code: p.country_code,
+      tags: p.tags.join(','),
+      stay_pp_night_eur_minor: toEur(p.accommodation_pp_night_minor, p.base_currency),
+      food_pp_day_eur_minor: toEur(p.food_pp_day_minor, p.base_currency),
+      activities_pp_day_eur_minor: toEur(p.activities_pp_day_minor, p.base_currency),
+    })),
     trips: buildTripRows(trips, s),
     dailySpend: [...buildDailySpendRows(expenses, allowed, rates, s), ...sampleRows],
   };
 }
 
+const fromRow = (r) => ({
+  perPersonDayMinor: Number(r.PER_PERSON_DAY_EUR_MINOR),
+  days: Number(r.TRIP_DAYS),
+  sampleOnly: Boolean(r.SAMPLE_ONLY),
+});
+
+// A typical day's reference costs per city, in EUR minor units
+const splitOf = (stay, food, activities) => ({ stayMinor: Number(stay), foodMinor: Number(food), activitiesMinor: Number(activities) });
+
 async function fromSnowflake() {
-  const rows = await snowflake.query(
-    'SELECT DESTINATION_CITY, PER_PERSON_DAY_EUR_MINOR, TRIP_DAYS, SAMPLE_ONLY FROM DESTINATION_DAILY_SPEND');
-  return Object.fromEntries(rows.map((r) => [r.DESTINATION_CITY, {
-    perPersonDayMinor: Number(r.PER_PERSON_DAY_EUR_MINOR),
-    days: Number(r.TRIP_DAYS),
-    sampleOnly: Boolean(r.SAMPLE_ONLY),
-  }]));
+  const [yearly, monthly, places] = await Promise.all([
+    snowflake.query('SELECT DESTINATION_CITY, PER_PERSON_DAY_EUR_MINOR, TRIP_DAYS, SAMPLE_ONLY FROM DESTINATION_DAILY_SPEND'),
+    snowflake.query('SELECT DESTINATION_CITY, MONTH, PER_PERSON_DAY_EUR_MINOR, TRIP_DAYS, SAMPLE_ONLY FROM DESTINATION_MONTHLY_SPEND'),
+    snowflake.query(`SELECT CITY, COUNTRY_CODE, STAY_PP_NIGHT_EUR_MINOR, FOOD_PP_DAY_EUR_MINOR, ACTIVITIES_PP_DAY_EUR_MINOR
+                     FROM DESTINATIONS`),
+  ]);
+  const byCityMonth = {};
+  for (const r of monthly) (byCityMonth[r.DESTINATION_CITY] = byCityMonth[r.DESTINATION_CITY] || {})[Number(r.MONTH)] = fromRow(r);
+  return {
+    byCity: Object.fromEntries(yearly.map((r) => [r.DESTINATION_CITY, fromRow(r)])),
+    byCityMonth,
+    byCitySplit: Object.fromEntries(places.map((p) => [p.CITY, {
+      countryCode: p.COUNTRY_CODE,
+      ...splitOf(p.STAY_PP_NIGHT_EUR_MINOR, p.FOOD_PP_DAY_EUR_MINOR, p.ACTIVITIES_PP_DAY_EUR_MINOR),
+    }])),
+  };
 }
 
 const withTimeout = (promise, ms) => Promise.race([
@@ -74,20 +109,32 @@ const withTimeout = (promise, ms) => Promise.race([
 ]);
 
 /**
- * @returns {Promise<{ byCity: Object<string, {perPersonDayMinor, days, sampleOnly}>, source: 'snowflake'|'local' }>}
- *          amounts in EUR minor units
+ * @returns {Promise<{ byCity, byCityMonth, byCitySplit, source: 'snowflake'|'local' }>}
+ *          byCity[city] and byCityMonth[city][1-12] are {perPersonDayMinor, days, sampleOnly};
+ *          byCitySplit[city] is {countryCode, stayMinor, foodMinor, activitiesMinor}. All in EUR minor units.
  */
 async function destinationSpend() {
   if (cache && Date.now() - cache.at < cache.ttl) return cache.value;
   let value;
   if (snowflake.isConfigured()) {
     try {
-      value = { byCity: await withTimeout(fromSnowflake(), SNOWFLAKE_TIMEOUT_MS), source: 'snowflake' };
+      value = { ...(await withTimeout(fromSnowflake(), SNOWFLAKE_TIMEOUT_MS)), source: 'snowflake' };
     } catch (err) {
       console.error('Snowflake insights unavailable, using local data:', err.message);
     }
   }
-  if (!value) value = { byCity: averageDailySpend((await loadAnalyticsRows()).dailySpend), source: 'local' };
+  if (!value) {
+    const { dailySpend, destinations } = await loadAnalyticsRows();
+    value = {
+      byCity: averageDailySpend(dailySpend),
+      byCityMonth: averageDailySpendByMonth(dailySpend),
+      byCitySplit: Object.fromEntries(destinations.map((d) => [d.city, {
+        countryCode: d.country_code,
+        ...splitOf(d.stay_pp_night_eur_minor, d.food_pp_day_eur_minor, d.activities_pp_day_eur_minor),
+      }])),
+      source: 'local',
+    };
+  }
   const fellBack = value.source === 'local' && snowflake.isConfigured();
   cache = { at: Date.now(), ttl: fellBack ? FALLBACK_CACHE_MS : CACHE_MS, value };
   return value;

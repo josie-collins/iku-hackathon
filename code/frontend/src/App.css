@@ -768,13 +768,14 @@ button.notification {
   overflow: hidden;
 }
 
-.option-card figure,
+/* Scoped to the photo: a bare `.option-card figure` also hit the chart figures */
+.option-photo,
 .trip-hero {
   position: relative;
   margin: 0;
 }
 
-.option-card img,
+.option-photo img,
 .trip-hero img,
 img.trip-photo {
   display: block;
@@ -784,7 +785,7 @@ img.trip-photo {
   background: #eee;
 }
 
-.option-card figcaption,
+.option-photo figcaption,
 .trip-hero figcaption {
   position: absolute;
   right: 6px;
@@ -795,7 +796,7 @@ img.trip-photo {
   font-size: 0.7rem;
 }
 
-.option-card figcaption a,
+.option-photo figcaption a,
 .trip-hero figcaption a {
   color: white;
 }
@@ -948,4 +949,657 @@ button.notification {
 
 .ai-label {
   white-space: nowrap;
+}
+
+/* Insight charts */
+.chart {
+  margin: 8px 0 0;
+}
+
+.chart svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.chart-readout {
+  min-height: 1.4em;
+  font-size: 0.875rem;
+}
+
+.chart-baseline {
+  stroke: #e6e5e1;
+  stroke-width: 1;
+}
+
+.chart-tick {
+  fill: #52514e;
+  font-size: 10px;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 4px;
+  font-size: 0.8rem;
+  color: #52514e;
+}
+
+.chart-legend i {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 4px;
+  border-radius: 2px;
+  vertical-align: -1px;
+}
+
+.chart-table {
+  margin-top: 4px;
+  font-size: 0.8rem;
+}
+
+.chart-table summary {
+  cursor: pointer;
+  color: #52514e;
+}
+
+.chart-table table,
+.insights-table {
+  border-collapse: collapse;
+}
+
+.chart-table th,
+.chart-table td,
+.insights-table th,
+.insights-table td {
+  padding: 2px 12px 2px 0;
+  text-align: left;
+  font-weight: normal;
+}
+
+.insights-table thead th {
+  font-weight: 600;
+}
+
+.split-bar {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+}
+
+.split-bar span {
+  min-width: 2px;
+}
+
+.split-bar span:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.split-bar span:last-child {
+  border-radius: 0 4px 4px 0;
+}
+
+.option-insights {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #eee;
+}
+
+.option-insights p {
+  margin: 0;
+}
+
+button.link.compare {
+  justify-self: start;
+  font-size: 0.875rem;
+}
+
+.insights-note {
+  margin: 16px 0 0;
+}
+
+.insights-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.insights-head h3 {
+  margin: 0;
+}
+
+.city-bars {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  display: grid;
+  gap: 2px;
+}
+
+.city-bars button {
+  display: grid;
+  grid-template-columns: minmax(0, 9.5em) 1fr auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 6px;
+  background: none;
+  color: #222;
+  font-size: 0.875rem;
+  text-align: left;
+}
+
+.city-bars button:hover,
+.city-bars button.selected {
+  background: #f1f5fb;
+}
+
+.city-bars button.selected .city-name {
+  font-weight: 600;
+}
+
+.city-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.city-track {
+  height: 12px;
+  min-width: 0;
+}
+
+/* Neutral, so they can't be read as the blue "Stay" in the split below */
+.city-fill {
+  display: block;
+  height: 100%;
+  background: #8a8983;
+  border-radius: 0 4px 4px 0;
+}
+
+.city-bars button.selected .city-fill {
+  background: #33322e;
+}
+
+.city-value {
+  min-width: 64px;
+  text-align: right;
+  color: #52514e;
+}
+
+
+/* Month chart legend: outlined swatch for "your trip" */
+.chart-legend i.swatch-outline {
+  background: #fff;
+  box-shadow: inset 0 0 0 2px #33322e;
+}
+
+/* Cheapest month for every destination */
+.table-scroll {
+  overflow-x: auto;
+  margin-top: 4px;
+}
+
+.insights-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.insights-table thead th {
+  padding: 0 10px 8px 0;
+  border-bottom: 1px solid #ddd;
+  color: #6b6a65;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.insights-table tbody th,
+.insights-table tbody td {
+  padding: 9px 10px 9px 0;
+  border-bottom: 1px solid #f0efec;
+  white-space: nowrap;
+}
+
+.insights-table tbody tr:last-child th,
+.insights-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.insights-table tbody tr:hover,
+.insights-table tbody tr.selected {
+  background: #f6f8f7;
+}
+
+.insights-table .num {
+  text-align: right;
+}
+
+.insights-table th:last-child,
+.insights-table td:last-child {
+  padding-right: 0;
+}
+
+button.row-link {
+  padding: 0;
+  background: none;
+  color: #222;
+  font-weight: 600;
+  text-align: left;
+}
+
+button.row-link:hover {
+  text-decoration: underline;
+}
+
+.swatch-ink {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 6px;
+  border-radius: 2px;
+  background: #33322e;
+}
+
+.saving {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e5f3ea;
+  color: #1e5a3b;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+/* "Show as a table" under each chart */
+.chart-table table {
+  margin-top: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-table tbody tr:nth-child(odd) {
+  background: #f6f8f7;
+}
+
+.chart-table th,
+.chart-table td {
+  padding: 3px 12px 3px 6px;
+}
+
+.chart-table td {
+  text-align: right;
+}
+
+/* "≈ £325" in the viewer's own currency */
+.approx {
+  color: #6b6a65;
+  font-weight: normal;
+  white-space: nowrap;
+}
+
+/* ===== Home layout: top bar, sidebar (profile + friends), main (trips) ===== */
+.App.app-shell {
+  max-width: 1160px;
+  padding: 0 16px 32px;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 0 -16px;
+  padding: 10px 16px;
+  background: #ffffff;
+  border-bottom: 1px solid #e6e5e1;
+}
+
+button.brand {
+  padding: 0;
+  background: none;
+  color: #1e5a3b;
+  font-size: 1.1rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.topnav {
+  display: flex;
+  gap: 4px;
+  margin-right: auto;
+}
+
+.topnav button {
+  padding: 6px 12px;
+  background: none;
+  color: #52514e;
+}
+
+.topnav button:hover {
+  background: #f3f3f1;
+}
+
+.topnav button[aria-current='page'] {
+  background: #eef5f1;
+  color: #1e5a3b;
+  font-weight: 600;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-actions button.secondary {
+  margin-top: 0;
+}
+
+.topbar .bell-button {
+  position: relative;
+  padding: 8px 10px;
+}
+
+.friends-toggle {
+  display: none;
+}
+
+.user-menu {
+  position: relative;
+}
+
+button.avatar-button {
+  padding: 0;
+  background: none;
+  border-radius: 50%;
+}
+
+.menu-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 10;
+  display: grid;
+  gap: 8px;
+  min-width: 180px;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.menu-who {
+  display: grid;
+  margin: 0;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+  margin-top: 20px;
+}
+
+.sidebar {
+  position: sticky;
+  top: 72px;
+  display: grid;
+  gap: 16px;
+  max-height: calc(100vh - 88px);
+  overflow-y: auto;
+}
+
+.side-card {
+  margin-top: 0;
+  padding: 16px;
+}
+
+.profile-card {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+
+.profile-name {
+  margin: 0;
+  font-size: 1.2rem;
+}
+
+.profile-card p {
+  margin: 0;
+}
+
+.profile-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #f3f3f1;
+  color: #444;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.profile-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: 100%;
+  margin: 4px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid #eee;
+}
+
+.profile-stats div {
+  display: grid;
+}
+
+.profile-stats dt {
+  color: #6b6a65;
+  font-size: 0.75rem;
+}
+
+.profile-stats dd {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+/* Friends, compact in the sidebar */
+.friends-compact {
+  display: grid;
+  gap: 12px;
+}
+
+.friends-compact label {
+  font-size: 0.875rem;
+}
+
+.friends-compact h4 {
+  margin: 4px 0 6px;
+  font-size: 0.8rem;
+  color: #6b6a65;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.friends-compact .person {
+  padding: 8px 10px;
+  gap: 8px;
+}
+
+.friends-compact .person .actions button {
+  padding: 4px 10px;
+  font-size: 0.8rem;
+}
+
+.friends-compact p {
+  margin: 4px 0 0;
+  font-size: 0.875rem;
+}
+
+/* Main column */
+.main {
+  min-width: 0;
+}
+
+.page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.page-title {
+  margin: 0;
+  font-size: 1.4rem;
+}
+
+.section-title {
+  margin: 28px 0 0;
+  color: #6b6a65;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+details.past-trips summary {
+  cursor: pointer;
+}
+
+.main .trip {
+  margin-top: 12px;
+}
+
+/* Wide screens: shortlist options side by side, so they're easy to compare */
+@media (min-width: 1000px) {
+  .main .options {
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    align-items: start;
+  }
+}
+
+/* Insights page: charts side by side when there's room */
+.insights-page .card {
+  margin-top: 16px;
+}
+
+@media (min-width: 1100px) {
+  .insights-page {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    column-gap: 16px;
+    align-items: start;
+  }
+
+  .insights-page > .page-title,
+  .insights-page > .insights-note,
+  .insights-page > .card:last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* Phones and narrow windows: one column. Profile only on Home; friends behind the button. */
+@media (max-width: 860px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+
+  .sidebar {
+    position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .friends-toggle {
+    display: inline-block;
+  }
+
+  .sidebar .friends-card {
+    display: none;
+  }
+
+  .sidebar.friends-open .friends-card {
+    display: block;
+  }
+
+  .layout:not(.layout-home) .sidebar:not(.friends-open) {
+    display: none;
+  }
+
+  .layout:not(.layout-home) .sidebar.friends-open .profile-card {
+    display: none;
+  }
+
+  .topnav button {
+    padding: 6px 8px;
+  }
+}
+
+@media (max-width: 480px) {
+  button.brand {
+    font-size: 0;
+  }
+
+  button.brand::before {
+    content: '✈';
+    font-size: 1.3rem;
+  }
+}
+
+/* Fixes from looking at the screenshots */
+/* Photos: a banner, not a full-width 16:9 that pushes the card off screen */
+img.trip-photo,
+.trip-hero img {
+  aspect-ratio: auto;
+  height: 220px;
+}
+
+@media (max-width: 860px) {
+  img.trip-photo,
+  .trip-hero img {
+    height: 180px;
+  }
+}
+
+/* Narrow option cards: price drops under the city instead of squeezing the dates */
+.option-head {
+  flex-wrap: wrap;
+}
+
+.option-head .price {
+  text-align: left;
+}
+
+/* Grid children default to min-width: auto, which let the SVG chart (viewBox 360 wide)
+   force its column wider than the card, so it got clipped. Let them shrink. */
+.option-body > *,
+.option-insights > *,
+.chart {
+  min-width: 0;
+}
+
+.chart svg {
+  max-width: 100%;
+}
+
+.your-flight {
+  margin: 0;
 }

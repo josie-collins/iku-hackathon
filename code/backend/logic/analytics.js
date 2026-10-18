@@ -78,25 +78,48 @@ function buildDailySpendRows(expenses, tripsById, rates, salt) {
  * @returns {Object<string, {perPersonDayMinor: number, days: number, sampleOnly: boolean}>}
  */
 function averageDailySpend(rows) {
-  const days = new Map(); // city|trip|day -> per-person total
-  const sampleFlags = new Map(); // city -> all rows sample?
+  return averageBy(rows, (r) => r.destination_city);
+}
+
+/**
+ * The same average, split by calendar month (1-12) of the spending day.
+ * Same calculation as the DESTINATION_MONTHLY_SPEND view in Snowflake.
+ * @returns {Object<string, Object<number, {perPersonDayMinor: number, days: number, sampleOnly: boolean}>>}
+ */
+function averageDailySpendByMonth(rows) {
+  const flat = averageBy(rows, (r) => `${r.destination_city}|${Number(r.spent_on.slice(5, 7))}`);
+  const byCity = {};
+  for (const [key, value] of Object.entries(flat)) {
+    const [city, month] = key.split('|');
+    (byCity[city] = byCity[city] || {})[Number(month)] = value;
+  }
+  return byCity;
+}
+
+// Add up each trip-day's per-person spend across categories, then average the
+// trip-days within each group (a city, or a city and month).
+function averageBy(rows, groupOf) {
+  const days = new Map(); // group|trip|day -> { group, total, sample }
   for (const r of rows) {
     if (!r.destination_city) continue;
-    const key = `${r.destination_city}|${r.trip_key}|${r.spent_on}`;
-    days.set(key, (days.get(key) || 0) + r.per_person_eur_minor);
-    sampleFlags.set(r.destination_city, (sampleFlags.get(r.destination_city) ?? true) && Boolean(r.is_sample));
+    const group = groupOf(r);
+    const key = `${group}|${r.trip_key}|${r.spent_on}`;
+    const day = days.get(key) || { group, total: 0, sample: true };
+    day.total += r.per_person_eur_minor;
+    day.sample = day.sample && Boolean(r.is_sample);
+    days.set(key, day);
   }
-  const byCity = {};
-  for (const [key, total] of days) {
-    const city = key.split('|')[0];
-    byCity[city] = byCity[city] || { sum: 0, days: 0 };
-    byCity[city].sum += total;
-    byCity[city].days += 1;
+  const groups = {};
+  for (const { group, total, sample } of days.values()) {
+    const g = (groups[group] = groups[group] || { sum: 0, days: 0, sampleOnly: true });
+    g.sum += total;
+    g.days += 1;
+    g.sampleOnly = g.sampleOnly && sample;
   }
-  return Object.fromEntries(Object.entries(byCity).map(([city, { sum, days: n }]) => [
-    city,
-    { perPersonDayMinor: Math.round(sum / n), days: n, sampleOnly: sampleFlags.get(city) },
+  return Object.fromEntries(Object.entries(groups).map(([group, g]) => [
+    group,
+    { perPersonDayMinor: Math.round(g.sum / g.days), days: g.days, sampleOnly: g.sampleOnly },
   ]));
 }
 
-module.exports = { MIN_GROUP_SIZE, tripKey, buildTripRows, buildDailySpendRows, averageDailySpend };
+module.exports = { MIN_GROUP_SIZE, tripKey, buildTripRows, buildDailySpendRows, averageDailySpend, averageDailySpendByMonth };

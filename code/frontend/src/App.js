@@ -17,9 +17,13 @@ function App() {
   }, []);
 
   return (
-    <main className="App">
-      <h1>Group Trip Planner</h1>
-      <p className="tagline">Transparent costs, private budgets.</p>
+    <main className={token ? 'App app-shell' : 'App'}>
+      {!token && (
+        <>
+          <h1>Group Trip Planner</h1>
+          <p className="tagline">Transparent costs, private budgets.</p>
+        </>
+      )}
       {token ? <Account onLogOut={logOut} /> : <Login onLogIn={logIn} />}
       <footer className="credits muted small">
         <a href={AVATAR_CREDIT.url} target="_blank" rel="noopener noreferrer">{AVATAR_CREDIT.text}</a>

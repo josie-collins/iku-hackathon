@@ -2,8 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, formatMoney } from './api';
 import Friends from './Friends';
 import Trip from './Trip';
-import NotificationBell from './Notifications';
+import NotificationBell, { timeAgo } from './Notifications';
 import Avatar, { AvatarStack } from './Avatar';
+import Insights from './Insights';
+import { Approx, RatesProvider } from './money';
+import { MonthBars, MONTH_NAMES, SplitBar, cheapestMonth, dearestMonth, percentLess, useInsights } from './charts';
 
 const CURRENT = ['on_trip'];
 const PLANNED = ['planning', 'voting', 'resolving', 'booked'];
@@ -48,9 +51,11 @@ function tripLength(start, end) {
 export default function Account({ onLogOut }) {
   const [account, setAccount] = useState(null);
   const [error, setError] = useState('');
-  const [tab, setTab] = useState('trips'); // 'trips' | 'friends'
-  const [creating, setCreating] = useState(false);
+  const [page, setPage] = useState('home'); // 'home' | 'insights'
   const [openTrip, setOpenTrip] = useState(null); // group id of the trip page being shown
+  const [creating, setCreating] = useState(false);
+  const [friendsOpen, setFriendsOpen] = useState(false); // the friends panel, on phones
+  const [friendCount, setFriendCount] = useState(null);
 
   const load = useCallback(() => {
     api('/account')
@@ -62,6 +67,7 @@ export default function Account({ onLogOut }) {
   }, [onLogOut]);
 
   useEffect(load, [load]);
+  const onFriendsLoaded = useCallback((d) => setFriendCount(d.friends.length), []);
 
   if (error) {
     return (
@@ -73,82 +79,164 @@ export default function Account({ onLogOut }) {
   }
   if (!account) return <p>Loading…</p>;
 
-  if (openTrip) {
-    return (
-      <Trip
-        groupId={openTrip}
-        onLogOut={onLogOut}
-        onBack={() => {
-          setOpenTrip(null);
-          load();
-        }}
-      />
-    );
-  }
-
   const { user, trips } = account;
-  const section = (title, statuses, empty) => {
-    const list = trips.filter((t) => statuses.includes(t.status));
-    return (
-      <section>
-        <h2>{title}</h2>
-        {list.length ? (
-          list.map((trip) => <TripCard key={trip.group_id} trip={trip} user={user} onChanged={load} onOpen={() => setOpenTrip(trip.group_id)} />)
-        ) : (
-          <p className="muted">{empty}</p>
-        )}
-      </section>
-    );
+  const goHome = () => {
+    setPage('home');
+    setOpenTrip(null);
+    setFriendsOpen(false);
+    load();
   };
+  const showTrip = (groupId) => {
+    setPage('home');
+    setOpenTrip(groupId);
+    setFriendsOpen(false);
+    window.scrollTo(0, 0);
+  };
+  const showInsights = () => {
+    setPage('insights');
+    setFriendsOpen(false);
+  };
+  const findFriends = () => {
+    setFriendsOpen(true);
+    setTimeout(() => document.getElementById('friend-username')?.focus(), 0);
+  };
+  const onHome = page === 'home' && !openTrip;
+
+  return (
+    // Shared trip prices stay in the trip's currency; <Approx> adds "≈" in the viewer's own.
+    <RatesProvider currency={user.home_currency} codes={trips.map((t) => t.base_currency)}>
+      <header className="topbar">
+        <button className="brand" onClick={goHome}>Group Trip Planner</button>
+        <nav className="topnav" aria-label="Pages">
+          <button aria-current={page === 'home' ? 'page' : undefined} onClick={goHome}>Home</button>
+          <button aria-current={page === 'insights' ? 'page' : undefined} onClick={showInsights}>Insights</button>
+        </nav>
+        <div className="topbar-actions">
+          <button className="secondary friends-toggle" aria-expanded={friendsOpen} onClick={() => setFriendsOpen(!friendsOpen)}>
+            Friends
+          </button>
+          <NotificationBell onOpenTrip={showTrip} />
+          <UserMenu user={user} onLogOut={onLogOut} />
+        </div>
+      </header>
+
+      <div className={`layout${onHome ? ' layout-home' : ''}`}>
+        <aside className={`sidebar${friendsOpen ? ' friends-open' : ''}`}>
+          <ProfileCard user={user} trips={trips} friendCount={friendCount} />
+          <section className="card side-card friends-card" aria-labelledby="friends-heading">
+            <h3 id="friends-heading" className="card-title">Friends</h3>
+            <Friends onLogOut={onLogOut} compact onLoaded={onFriendsLoaded} />
+          </section>
+        </aside>
+
+        <main className="main">
+          {page === 'insights' ? (
+            <div className="insights-page">
+              <h2 className="page-title">Insights</h2>
+              <Insights />
+            </div>
+          ) : openTrip ? (
+            <Trip groupId={openTrip} onLogOut={onLogOut} onBack={goHome} />
+          ) : (
+            <TripsHome
+              user={user}
+              trips={trips}
+              creating={creating}
+              setCreating={setCreating}
+              onChanged={load}
+              onOpenTrip={showTrip}
+              onFindFriends={findFriends}
+            />
+          )}
+        </main>
+      </div>
+    </RatesProvider>
+  );
+}
+
+// Your avatar in the top bar, opening a small menu
+function UserMenu({ user, onLogOut }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="user-menu">
+      <button className="avatar-button" aria-expanded={open} aria-label={`${user.name}: account menu`} onClick={() => setOpen(!open)}>
+        <Avatar username={user.username} name={user.name} size={34} />
+      </button>
+      {open && (
+        <div className="menu-panel">
+          <p className="menu-who">
+            <strong>{user.name}</strong>
+            <span className="muted small">@{user.username}</span>
+          </p>
+          <button className="secondary" onClick={onLogOut}>Log out</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProfileCard({ user, trips, friendCount }) {
+  const active = trips.filter((t) => !PAST.includes(t.status)).length;
+  return (
+    <section className="card side-card profile-card">
+      <Avatar username={user.username} name={user.name} size={64} />
+      <div>
+        <h2 className="profile-name">{user.name}</h2>
+        <p className="muted small">@{user.username}</p>
+      </div>
+      <div className="profile-chips">
+        <span className="chip">{user.home_currency}</span>
+        {user.departure_airport && <span className="chip">✈ {user.departure_airport}</span>}
+      </div>
+      <dl className="profile-stats">
+        <div><dt>Trips</dt><dd>{active}</dd></div>
+        <div><dt>Past</dt><dd>{trips.length - active}</dd></div>
+        <div><dt>Friends</dt><dd>{friendCount ?? '–'}</dd></div>
+      </dl>
+    </section>
+  );
+}
+
+function TripsHome({ user, trips, creating, setCreating, onChanged, onOpenTrip, onFindFriends }) {
+  const card = (trip) => (
+    <TripCard key={trip.group_id} trip={trip} user={user} onChanged={onChanged} onOpen={() => onOpenTrip(trip.group_id)} />
+  );
+  const current = trips.filter((t) => CURRENT.includes(t.status));
+  const planned = trips.filter((t) => PLANNED.includes(t.status));
+  const past = trips.filter((t) => PAST.includes(t.status));
 
   return (
     <>
-      <section className="card profile">
-        <div className="profile-who">
-          <Avatar username={user.username} name={user.name} size={56} />
-          <div>
-            <h2>{user.name}</h2>
-            <p className="muted">
-              {[`@${user.username}`, user.home_currency, user.departure_airport && `flies from ${user.departure_airport}`]
-                .filter(Boolean)
-                .join(' · ')}
-            </p>
-          </div>
-        </div>
-        <div className="profile-actions">
-          <NotificationBell onOpenTrip={setOpenTrip} />
-          <button className="secondary" onClick={onLogOut}>Log out</button>
-        </div>
+      <div className="page-head">
+        <h2 className="page-title">Your trips</h2>
+        {!creating && <button onClick={() => setCreating(true)}>+ Plan a new trip</button>}
+      </div>
+      {creating && (
+        <NewTrip
+          onCancel={() => setCreating(false)}
+          onCreated={() => {
+            setCreating(false);
+            onChanged();
+          }}
+          onFindFriends={onFindFriends}
+        />
+      )}
+
+      {current.length > 0 && (
+        <section>
+          <h3 className="section-title">On the trip now</h3>
+          {current.map(card)}
+        </section>
+      )}
+      <section>
+        <h3 className="section-title">Planning and booked</h3>
+        {planned.length ? planned.map(card) : <p className="muted">No trips being planned. Start one with “Plan a new trip”.</p>}
       </section>
-
-      <nav className="tabs" role="tablist">
-        {[['trips', 'Trips'], ['friends', 'Friends']].map(([key, label]) => (
-          <button key={key} role="tab" aria-selected={tab === key} className={tab === key ? 'active' : ''} onClick={() => setTab(key)}>
-            {label}
-          </button>
-        ))}
-      </nav>
-
-      {tab === 'trips' ? (
-        <>
-          {creating ? (
-            <NewTrip
-              onCancel={() => setCreating(false)}
-              onCreated={() => {
-                setCreating(false);
-                load();
-              }}
-              onFindFriends={() => setTab('friends')}
-            />
-          ) : (
-            <button className="new-trip" onClick={() => setCreating(true)}>+ Plan a new trip</button>
-          )}
-          {section('Current trips', CURRENT, "You're not on a trip right now.")}
-          {section('Planned trips', PLANNED, 'No trips being planned.')}
-          {section('Past trips', PAST, 'No past trips yet.')}
-        </>
-      ) : (
-        <Friends onLogOut={onLogOut} />
+      {past.length > 0 && (
+        <details className="past-trips">
+          <summary className="section-title">Past trips ({past.length})</summary>
+          {past.map(card)}
+        </details>
       )}
     </>
   );
@@ -362,10 +450,90 @@ function GroupProgress({ trip, onChanged }) {
   );
 }
 
+// "~£96" or "~₦1,288,547": a rough price, so whole units and the short symbol
+const roundMoney = (minor, currency) =>
+  new Intl.NumberFormat(undefined, { style: 'currency', currency, currencyDisplay: 'narrowSymbol', maximumFractionDigits: 0 })
+    .format(Number(minor) / 100);
+
+// Your own return flight for this option. Only you see it; other people's flights stay private.
+function YourFlight({ flight: f }) {
+  const live = f.source === 'live';
+  const details = [
+    f.stops === 0 ? 'direct' : f.stops ? `${f.stops} stop${f.stops > 1 ? 's' : ''}` : null,
+    f.airline,
+  ].filter(Boolean);
+  return (
+    <p className="your-flight small">
+      <span aria-hidden="true">✈ </span>
+      Your flight from {f.from}: <strong>~{roundMoney(f.price_minor, f.currency)}</strong> return
+      {details.length > 0 && ` · ${details.join(' · ')}`}
+      <span className="muted">
+        {' · '}
+        {live ? `live price, ${timeAgo(f.fetched_at)}` : 'sample estimate'}
+      </span>
+      {f.google_flights_url && (
+        <>
+          {' · '}
+          <a href={f.google_flights_url} target="_blank" rel="noopener noreferrer">Google Flights</a>
+        </>
+      )}
+    </p>
+  );
+}
+
 // One shortlisted place: photo, dates, price, your vote and the anonymous totals.
+// Month-by-month spend for this option's city, with the trip's own month highlighted.
+function OptionInsights({ option: o }) {
+  const { data, error } = useInsights(o.currency);
+  if (error) return <p className="error small">Couldn't load months: {error}</p>;
+  if (!data) return <p className="muted small">Loading…</p>;
+  const city = data.cities.find((c) => c.city === o.city);
+  if (!city) return <p className="muted small">No past-group data for {o.city} yet.</p>;
+
+  const tripMonth = Number(o.window_start.slice(5, 7)) - 1;
+  const cheapest = cheapestMonth(city.months);
+  const dearest = dearestMonth(city.months);
+  const enough = city.months.filter(Boolean).length >= 3;
+  const inTrip = city.months[tripMonth];
+  const inCheapest = city.months[cheapest];
+  const inDearest = city.months[dearest];
+
+  return (
+    <div className="option-insights">
+      {!enough ? (
+        <p className="muted small">Not enough data yet to compare months for {o.city}.</p>
+      ) : cheapest === tripMonth ? (
+        <p className="small"><strong>{MONTH_NAMES[tripMonth]} is the cheapest month</strong> to go to {o.city}.</p>
+      ) : (
+        <p className="small">
+          In <strong>{MONTH_NAMES[cheapest]}</strong>, past groups spent about{' '}
+          {inTrip ? `${percentLess(inCheapest, inTrip)}% less a day than in ${MONTH_NAMES[tripMonth]}` : 'the least'}.
+        </p>
+      )}
+      {enough && dearest !== cheapest && (
+        <p className="small">
+          That's <strong>{percentLess(inCheapest, inDearest)}% cheaper</strong> than {MONTH_NAMES[dearest]}, the most expensive month
+          {dearest === tripMonth ? ' (your trip month)' : ''}.
+        </p>
+      )}
+      {enough && (
+        <MonthBars
+          months={city.months}
+          currency={data.currency}
+          highlight={tripMonth}
+          label={`Spend per person per day in ${o.city}, by month, with your trip's month highlighted`}
+        />
+      )}
+      {city.split && <SplitBar split={city.split} currency={data.currency} />}
+      <p className="muted small">Sample data with a made-up seasonal pattern: illustrative only.</p>
+    </div>
+  );
+}
+
 function OptionCard({ option: o, trip, total, onChanged }) {
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [comparing, setComparing] = useState(false);
   const waiting = total - o.yes_votes - o.no_votes;
   const majority = o.yes_votes * 2 > total;
   const isOrganiser = trip.role === 'organiser';
@@ -400,7 +568,7 @@ function OptionCard({ option: o, trip, total, onChanged }) {
   return (
     <li className="option-card">
       {o.image_url && (
-        <figure>
+        <figure className="option-photo">
           <img src={o.image_url} alt={o.city} loading="lazy" />
           {o.image_credit_url && (
             <figcaption>
@@ -419,6 +587,7 @@ function OptionCard({ option: o, trip, total, onChanged }) {
           </div>
           <div className="price">
             ~{formatMoney(o.est_cost_pp_minor, o.currency)}
+            <Approx minor={o.est_cost_pp_minor} from={o.currency} />
             <div className="muted small">per person, shared</div>
           </div>
         </div>
@@ -433,10 +602,13 @@ function OptionCard({ option: o, trip, total, onChanged }) {
             {o.tags.map((t) => <span key={t} className="tag">{t}</span>)}
           </div>
         )}
+        {o.your_flight && <YourFlight flight={o.your_flight} />}
         {o.past_spend && (
           <p className="muted small past-spend">
-            Past groups spent about <strong>{formatMoney(o.past_spend.per_person_day_minor, o.past_spend.currency)}</strong> per
-            person a day here{o.past_spend.sample_only && ' · sample data'}
+            {o.past_spend.month ? `In ${MONTH_NAMES[o.past_spend.month - 1]}, past groups spent about ` : 'Past groups spent about '}
+            <strong>{formatMoney(o.past_spend.per_person_day_minor, o.past_spend.currency)}</strong>
+            <Approx minor={o.past_spend.per_person_day_minor} from={o.past_spend.currency} /> per person a day
+            here{o.past_spend.sample_only && ' · sample data'}
           </p>
         )}
         <div className="vote-row">
@@ -458,6 +630,10 @@ function OptionCard({ option: o, trip, total, onChanged }) {
             {isOrganiser && <button disabled={busy} onClick={book}>Book {o.city}</button>}
           </div>
         )}
+        <button className="link compare" aria-expanded={comparing} onClick={() => setComparing(!comparing)}>
+          {comparing ? 'Hide months' : 'Compare months'}
+        </button>
+        {comparing && <OptionInsights option={o} />}
         {error && <p className="error small">{error}</p>}
       </div>
     </li>

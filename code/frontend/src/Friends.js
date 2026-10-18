@@ -2,19 +2,22 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from './api';
 import Avatar from './Avatar';
 
-export default function Friends({ onLogOut }) {
+export default function Friends({ onLogOut, compact = false, onLoaded }) {
   const [data, setData] = useState(null);
   const [username, setUsername] = useState('');
   const [message, setMessage] = useState(null); // { text, error }
 
   const load = useCallback(() => {
     api('/friends')
-      .then(setData)
+      .then((d) => {
+        setData(d);
+        if (onLoaded) onLoaded(d);
+      })
       .catch((err) => {
         if (err.message === 'unauthenticated') onLogOut();
         else setMessage({ text: err.message, error: true });
       });
-  }, [onLogOut]);
+  }, [onLogOut, onLoaded]);
 
   useEffect(load, [load]);
 
@@ -46,9 +49,12 @@ export default function Friends({ onLogOut }) {
 
   if (!data) return message ? <p className="error">{message.text}</p> : <p>Loading…</p>;
 
+  // In the sidebar: smaller headings, and no extra card around the form (it's already in one).
+  const Heading = compact ? 'h4' : 'h2';
+
   return (
-    <>
-      <section className="card">
+    <div className={compact ? 'friends-compact' : undefined}>
+      <section className={compact ? 'friends-form' : 'card'}>
         <form onSubmit={sendRequest}>
           <label htmlFor="friend-username">Add a friend by username</label>
           <div className="row">
@@ -59,7 +65,7 @@ export default function Friends({ onLogOut }) {
               placeholder="@username"
               autoCapitalize="none"
             />
-            <button type="submit" disabled={!username.trim()}>Send request</button>
+            <button type="submit" disabled={!username.trim()}>{compact ? 'Add' : 'Send request'}</button>
           </div>
         </form>
         {message && <p className={message.error ? 'error' : 'success'}>{message.text}</p>}
@@ -67,7 +73,7 @@ export default function Friends({ onLogOut }) {
 
       {data.incoming.length > 0 && (
         <section>
-          <h2>Friend requests</h2>
+          <Heading>Friend requests</Heading>
           <ul className="people">
             {data.incoming.map((p) => (
               <Person key={p.id} person={p}>
@@ -84,7 +90,7 @@ export default function Friends({ onLogOut }) {
       )}
 
       <section>
-        <h2>Friends</h2>
+        {!compact && <Heading>Friends</Heading>}
         {data.friends.length ? (
           <ul className="people">
             {data.friends.map((p) => (
@@ -108,7 +114,7 @@ export default function Friends({ onLogOut }) {
 
       {data.outgoing.length > 0 && (
         <section>
-          <h2>Waiting for a reply</h2>
+          <Heading>Waiting for a reply</Heading>
           <ul className="people">
             {data.outgoing.map((p) => (
               <Person key={p.id} person={p}>
@@ -120,7 +126,7 @@ export default function Friends({ onLogOut }) {
           </ul>
         </section>
       )}
-    </>
+    </div>
   );
 }
 

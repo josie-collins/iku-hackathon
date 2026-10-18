@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { tripKey, buildTripRows, buildDailySpendRows, averageDailySpend } = require('../logic/analytics');
+const { tripKey, buildTripRows, buildDailySpendRows, averageDailySpend, averageDailySpendByMonth } = require('../logic/analytics');
 
 const SALT = 'test-salt';
 const RATES = { EUR: 1, GBP: 0.86 };
@@ -71,4 +71,25 @@ test('average adds categories within a day, then averages over days', () => {
   ]);
   assert.deepEqual(avg.Porto, { perPersonDayMinor: 3000, days: 2, sampleOnly: false });
   assert.equal(avg.Prague.sampleOnly, true);
+});
+
+test('monthly average splits by calendar month', () => {
+  const rows = [
+    { trip_key: 's', destination_city: 'Porto', spent_on: '2026-06-01', per_person_eur_minor: 9000, is_sample: true },
+    { trip_key: 's', destination_city: 'Porto', spent_on: '2026-06-02', per_person_eur_minor: 7000, is_sample: true },
+    { trip_key: 's', destination_city: 'Porto', spent_on: '2026-01-10', per_person_eur_minor: 5000, is_sample: true },
+    { trip_key: 'a', destination_city: 'Porto', spent_on: '2026-06-01', per_person_eur_minor: 2000, is_sample: false },
+  ];
+  const byMonth = averageDailySpendByMonth(rows);
+  assert.deepEqual(byMonth.Porto[6], { perPersonDayMinor: 6000, days: 3, sampleOnly: false });
+  assert.deepEqual(byMonth.Porto[1], { perPersonDayMinor: 5000, days: 1, sampleOnly: true });
+  assert.equal(byMonth.Porto[3], undefined);
+});
+
+test('monthly and yearly averages agree when there is one month', () => {
+  const rows = [
+    { trip_key: 'a', destination_city: 'Split', spent_on: '2026-07-01', per_person_eur_minor: 4000, is_sample: false },
+    { trip_key: 'a', destination_city: 'Split', spent_on: '2026-07-02', per_person_eur_minor: 6000, is_sample: false },
+  ];
+  assert.deepEqual(averageDailySpendByMonth(rows).Split[7], averageDailySpend(rows).Split);
 });
